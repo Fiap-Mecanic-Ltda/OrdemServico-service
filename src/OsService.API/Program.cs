@@ -1,4 +1,7 @@
 using Microsoft.AspNetCore.HttpOverrides;
+using Microsoft.AspNetCore.Mvc;
+using OsService.API.Infra;
+using OsService.Application.Interfaces;
 using OsService.API.Extensions;
 using OsService.API.Middlewares;
 using OsService.Bootstrap.Extensions;
@@ -14,6 +17,14 @@ if (builder.Environment.IsDevelopment())
 }
 
 builder.Services.AddControllers();
+
+// Erros de validação no mesmo envelope da API da Fase 3: { success: false, errors: [...] }.
+builder.Services.Configure<ApiBehaviorOptions>(options =>
+    options.InvalidModelStateResponseFactory = context => new BadRequestObjectResult(new
+    {
+        success = false,
+        errors  = context.ModelState.Values.SelectMany(v => v.Errors).Select(e => e.ErrorMessage)
+    }));
 
 // Rotas em minúsculas: o roteamento do API Gateway diferencia maiúsculas, então Swagger,
 // Postman e as rotas do gateway precisam usar exatamente a mesma grafia.
@@ -33,14 +44,22 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerWithAuth();
 
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddScoped<IContextoRequisicao, ContextoRequisicaoHttp>();
 builder.Services.AddDatabase(builder.Configuration);
+builder.Services.AddDependencyInjection(builder.Configuration);
 builder.Services.AddJwtAuthentication(builder.Configuration);
 builder.Services.AddAuthorization();
 
 var app = builder.Build();
 
+// Os testes de API usam banco em memória e não aplicam migrations.
+if (!app.Environment.IsEnvironment("Testing"))
+    await app.MigrateDatabaseAsync();
+
 app.UseForwardedHeaders();
 app.UseCorrelationId();
+app.UseTratamentoDeErros();
 
 app.UseSwagger();
 app.UseSwaggerUI();

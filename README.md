@@ -64,3 +64,43 @@ dotnet run --project src/OsService.API          # http://localhost:5070/swagger
 ```bash
 dotnet test OsService.sln --settings coverlet.runsettings --collect:"XPlat Code Coverage"
 ```
+
+## Configuração
+
+| Chave | Padrão | Uso |
+|---|---|---|
+| `JWT_SECRET_KEY` | (obrigatória) | Mesma chave do MechanicLtda e da Lambda |
+| `ConnectionStrings__DefaultConnection` | SQL Server local | Banco próprio do serviço (schema `os`) |
+| `Integracoes__MechanicLtdaApi__BaseUrl` | `http://localhost:8080` | API do MechanicLtda, usada para validar cliente e veículo |
+| `Saga__Habilitada` | `false` | Com `true`, as transições feitas pela Saga ficam bloqueadas na API (409) |
+
+As migrations são aplicadas na subida da API.
+
+## Endpoints
+
+Todas as rotas exigem o JWT do sistema. Admin = `Administrador` ou `Funcionario`.
+
+| Método e rota | Quem | O que faz |
+|---|---|---|
+| `POST /api/ordemservico` | Admin | Abre a OS (confere no MechanicLtda que o veículo é do cliente) |
+| `GET /api/ordemservico` | Admin | OS em andamento, das mais urgentes para as menos |
+| `GET /api/ordemservico/{id}` | Admin, Cliente (só a própria) | Status, itens e referências |
+| `GET /api/ordemservico/{id}/historico` | Admin, Cliente (só a própria) | Histórico de status |
+| `GET /api/ordemservico/cliente/{clienteId}` | Admin, Cliente (só o próprio) | OS do cliente |
+| `GET /api/ordemservico/tempo-medio-execucao` | Admin | Tempo médio das OS executadas |
+| `PUT /api/ordemservico/{id}` | Admin | Descrição e valor estimado (com valor, vai para diagnóstico) |
+| `PATCH /api/ordemservico/{id}/iniciar-diagnostico` | Admin | Recebida → Em Diagnóstico |
+| `PATCH /api/ordemservico/{id}/aguardar-aprovacao` | Admin | Em Diagnóstico → Aguardando Aprovação (*) |
+| `PATCH /api/ordemservico/{id}/aprovar` (ou `iniciar-execucao`) | Admin | Aguardando Aprovação → Em Execução (*) |
+| `PATCH /api/ordemservico/{id}/recusar` | Admin | Aguardando Aprovação → Cancelada (*) |
+| `PATCH /api/ordemservico/{id}/finalizar` | Admin | Em Execução → Finalizada (*) |
+| `PATCH /api/ordemservico/{id}/entregar` | Admin | Finalizada → Entregue |
+| `PATCH /api/ordemservico/{id}/cancelar` | Admin | Cancela (com a Saga ligada, só antes do orçamento) |
+| `DELETE /api/ordemservico/{id}` | Admin | Remove OS Recebida ou em Diagnóstico |
+| `GET/POST/PUT/DELETE /api/ordem-servico/{id}/itens` | Admin | Itens da OS (só em Recebida ou Diagnóstico) |
+
+(*) Bloqueadas com `Saga__Habilitada=true`: nesse modo quem faz a transição é a Saga.
+
+Erros seguem o envelope `{ "success": false, "errors": [...] }`: 400 regra de negócio ou
+validação, 403 cliente acessando dados de outro, 404 não encontrado, 409 operação da Saga e
+503 quando o MechanicLtda não responde.

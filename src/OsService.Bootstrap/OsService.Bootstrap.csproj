@@ -5,6 +5,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Http.Resilience" Version="9.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\OsService.Application\OsService.Application.csproj" />
     <ProjectReference Include="..\OsService.Infrastructure\OsService.Infrastructure.csproj" />
   </ItemGroup>

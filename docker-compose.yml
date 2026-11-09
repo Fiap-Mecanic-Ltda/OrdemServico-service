@@ -47,6 +47,11 @@ services:
       - RabbitMq__Host=rabbitmq
       - RabbitMq__Usuario=${RABBITMQ_USER}
       - RabbitMq__Senha=${RABBITMQ_PASSWORD}
+      - Saga__Habilitada=false
+      # MechanicLtda rodando no host (o compose dele expõe a API na 8080).
+      - Integracoes__MechanicLtdaApi__BaseUrl=http://host.docker.internal:8080
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       sqlserver:
         condition: service_healthy

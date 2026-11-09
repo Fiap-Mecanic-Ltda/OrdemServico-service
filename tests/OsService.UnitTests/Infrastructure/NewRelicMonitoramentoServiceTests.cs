@@ -20,6 +20,8 @@ namespace OsService.UnitTests.Infrastructure
                 _servico.RegistrarOrdemServicoCriada(os);
                 _servico.RegistrarMudancaStatus(os, StatusOrdemServico.Recebida, TimeSpan.FromMinutes(3));
                 _servico.RegistrarFalhaIntegracao("MechanicLtda", "ObterCliente", new Exception(new string('x', 400)));
+                _servico.RegistrarPassoSaga(os.CorrelationId, 1, "DiagnosticoConcluido", "AguardandoOrcamento");
+                _servico.RegistrarCompensacaoSaga(os.CorrelationId, 1, "Pagamento falhou", ["CancelarOrcamento", "LiberarReservaEstoque"]);
             });
 
             Assert.Null(ex);

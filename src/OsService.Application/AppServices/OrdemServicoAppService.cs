@@ -1,9 +1,11 @@
+using MechanicLtda.Contratos;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using OsService.Application.DTOs;
 using OsService.Application.Exceptions;
 using OsService.Application.Interfaces;
 using OsService.Application.Options;
+using OsService.Application.Saga;
 using OsService.Domain.Entities;
 using OsService.Domain.Enums;
 using OsService.Domain.Exceptions;
@@ -55,19 +57,21 @@ namespace OsService.Application.AppServices
         private readonly IMonitoramentoService _monitoramento;
         private readonly IContextoRequisicao _contexto;
         private readonly IRelogio _relogio;
+        private readonly IPublicadorMensagens _publicador;
         private readonly SagaOptions _saga;
         private readonly ILogger<OrdemServicoAppService> _logger;
 
         public OrdemServicoAppService(IOrdemServicoRepository repositorio, IClienteVeiculoGateway clienteVeiculo,
                                       IMonitoramentoService monitoramento, IContextoRequisicao contexto,
-                                      IRelogio relogio, IOptions<SagaOptions> saga,
-                                      ILogger<OrdemServicoAppService> logger)
+                                      IRelogio relogio, IPublicadorMensagens publicador,
+                                      IOptions<SagaOptions> saga, ILogger<OrdemServicoAppService> logger)
         {
             _repositorio    = repositorio;
             _clienteVeiculo = clienteVeiculo;
             _monitoramento  = monitoramento;
             _contexto       = contexto;
             _relogio        = relogio;
+            _publicador     = publicador;
             _saga           = saga.Value;
             _logger         = logger;
         }
@@ -86,7 +90,7 @@ namespace OsService.Application.AppServices
                                            dto.ValorTotalEstimado, _relogio.UtcAgora, _contexto.CorrelationId);
 
             await _repositorio.AdicionarAsync(ordem, ct);
-            await _repositorio.SalvarAsync(ct);
+            await SalvarAsync(ct);
 
             _monitoramento.RegistrarOrdemServicoCriada(ordem);
             _logger.LogInformation("OS {OrdemServicoId} aberta para o cliente {ClienteId} (saga {CorrelationId}).",
@@ -103,9 +107,9 @@ namespace OsService.Application.AppServices
 
             // Mesmo gatilho da Fase 3: com descrição e valor estimado, a OS recebida vai para diagnóstico.
             if (ordem.Status == StatusOrdemServico.Recebida && dto.ValorTotalEstimado.HasValue)
-                Transicionar(ordem, StatusOrdemServico.EmDiagnostico, "Valor estimado informado");
+                await IrParaDiagnosticoAsync(ordem, "Valor estimado informado", ct);
 
-            await _repositorio.SalvarAsync(ct);
+            await SalvarAsync(ct);
             return OrdemServicoDto.De(ordem);
         }
 
@@ -156,14 +160,25 @@ namespace OsService.Application.AppServices
                 throw new RegraDeNegocioException(
                     $"Só é possível remover OS 'Recebida' ou em 'Diagnóstico'. Status atual: {ordem.Status.Descricao()}. Use o cancelamento.");
 
+            // Com a Saga ligada, a OS em diagnóstico já está com a Execução.
+            if (_saga.Habilitada && ordem.Status != StatusOrdemServico.Recebida)
+                throw new RegraDeNegocioException("Com a Saga ligada, só é possível remover OS 'Recebida'. Use o cancelamento.");
+
             _repositorio.Remover(ordem);
-            await _repositorio.SalvarAsync(ct);
+            await SalvarAsync(ct);
         }
 
         // ── Transições manuais ─────────────────────────────────────────────────
 
-        public Task<OrdemServicoDto> IniciarDiagnosticoAsync(int id, CancellationToken ct = default) =>
-            TransicionarAsync(id, StatusOrdemServico.EmDiagnostico, null, ct);
+        public async Task<OrdemServicoDto> IniciarDiagnosticoAsync(int id, CancellationToken ct = default)
+        {
+            var ordem = await ObterOrdemAsync(id, ct);
+
+            await IrParaDiagnosticoAsync(ordem, null, ct);
+            await SalvarAsync(ct);
+
+            return OrdemServicoDto.De(ordem);
+        }
 
         public Task<OrdemServicoDto> AguardarAprovacaoAsync(int id, CancellationToken ct = default)
         {
@@ -197,15 +212,26 @@ namespace OsService.Application.AppServices
         {
             var ordem = await ObterOrdemAsync(id, ct);
 
-            // Antes do orçamento não há nada em outro serviço para desfazer; depois disso, o
+            // Antes do orçamento não há nada no Billing para desfazer; depois disso, o
             // cancelamento precisa passar pela compensação da Saga.
             if (ordem.Status is not (StatusOrdemServico.Recebida or StatusOrdemServico.EmDiagnostico)
                 && _saga.Habilitada)
                 throw new OperacaoControladaPelaSagaException("cancelar");
 
-            Transicionar(ordem, StatusOrdemServico.Cancelada,
-                         string.IsNullOrWhiteSpace(motivo) ? "Cancelada manualmente" : motivo);
-            await _repositorio.SalvarAsync(ct);
+            var emDiagnostico = ordem.Status == StatusOrdemServico.EmDiagnostico;
+            var texto = string.IsNullOrWhiteSpace(motivo) ? "Cancelada manualmente" : motivo;
+
+            await MudarStatusAsync(ordem, StatusOrdemServico.Cancelada, texto, ct);
+
+            // A Execução pode já ter reservado peças no diagnóstico: a Saga avisa e termina.
+            if (_saga.Habilitada && emDiagnostico)
+                await _publicador.PublicarAsync(new OrdemServicoCanceladaManualmente
+                {
+                    CorrelationId = ordem.CorrelationId,
+                    Motivo        = texto,
+                }, _contexto.CorrelationId, ct);
+
+            await SalvarAsync(ct);
 
             return OrdemServicoDto.De(ordem);
         }
@@ -224,7 +250,7 @@ namespace OsService.Application.AppServices
             var item  = ordem.AdicionarItem(dto.Descricao, dto.Tipo, dto.Quantidade, dto.ValorUnitario,
                                             dto.EstoqueId, dto.ServicoOficinaId, _relogio.UtcAgora);
 
-            await _repositorio.SalvarAsync(ct);
+            await SalvarAsync(ct);
             return ItemOrdemServicoDto.De(item);
         }
 
@@ -234,7 +260,7 @@ namespace OsService.Application.AppServices
             var item  = ordem.AtualizarItem(itemId, dto.Descricao, dto.Tipo, dto.Quantidade, dto.ValorUnitario,
                                             dto.EstoqueId, dto.ServicoOficinaId, _relogio.UtcAgora);
 
-            await _repositorio.SalvarAsync(ct);
+            await SalvarAsync(ct);
             return ItemOrdemServicoDto.De(item);
         }
 
@@ -243,10 +269,16 @@ namespace OsService.Application.AppServices
             var ordem = await ObterOrdemAsync(ordemServicoId, ct);
             ordem.RemoverItem(itemId, _relogio.UtcAgora);
 
-            await _repositorio.SalvarAsync(ct);
+            await SalvarAsync(ct);
         }
 
         // ── Apoio ──────────────────────────────────────────────────────────────
+
+        private async Task SalvarAsync(CancellationToken ct)
+        {
+            await _repositorio.SalvarAsync(ct);
+            await _publicador.ConfirmarAsync(ct);
+        }
 
         private async Task<OrdemServico> ObterOrdemAsync(int id, CancellationToken ct) =>
             await _repositorio.ObterPorIdAsync(id, ct)
@@ -256,18 +288,61 @@ namespace OsService.Application.AppServices
         {
             var ordem = await ObterOrdemAsync(id, ct);
 
-            Transicionar(ordem, novo, motivo);
-            await _repositorio.SalvarAsync(ct);
+            await MudarStatusAsync(ordem, novo, motivo, ct);
+            await SalvarAsync(ct);
 
             return OrdemServicoDto.De(ordem);
         }
 
-        private void Transicionar(OrdemServico ordem, StatusOrdemServico novo, string? motivo)
+        private async Task MudarStatusAsync(OrdemServico ordem, StatusOrdemServico novo, string? motivo, CancellationToken ct)
         {
             var (anterior, tempo) = ordem.AlterarStatus(novo, _relogio.UtcAgora, OrigemAlteracaoStatus.Usuario,
                                                         motivo, _contexto.CorrelationId);
 
             _monitoramento.RegistrarMudancaStatus(ordem, anterior, tempo);
+
+            // Gravado no outbox: só sai para o broker se a transação for confirmada.
+            if (_saga.Habilitada)
+                await _publicador.PublicarAsync(new OrdemServicoStatusAlterado
+                {
+                    CorrelationId  = ordem.CorrelationId,
+                    OrdemServicoId = ordem.Id,
+                    DataHora       = _relogio.UtcAgora,
+                    ClienteId      = ordem.ClienteId,
+                    StatusAnterior = anterior.ToString(),
+                    StatusAtual    = novo.ToString(),
+                    Motivo         = motivo,
+                }, _contexto.CorrelationId, ct);
+        }
+
+        /// <summary>
+        /// Recebida → Em Diagnóstico. Com a Saga ligada, é aqui que ela começa: os dados do
+        /// cliente que o Billing vai precisar são lidos agora, enquanto há o token da requisição.
+        /// </summary>
+        private async Task IrParaDiagnosticoAsync(OrdemServico ordem, string? motivo, CancellationToken ct)
+        {
+            if (!_saga.Habilitada)
+            {
+                await MudarStatusAsync(ordem, StatusOrdemServico.EmDiagnostico, motivo, ct);
+                return;
+            }
+
+            var cliente = await _clienteVeiculo.ObterClienteAsync(ordem.ClienteId, ct)
+                ?? throw new RecursoNaoEncontradoException($"Cliente com Id '{ordem.ClienteId}' não encontrado.");
+
+            await MudarStatusAsync(ordem, StatusOrdemServico.EmDiagnostico, motivo, ct);
+
+            await _publicador.PublicarAsync(new DiagnosticoSolicitado
+            {
+                CorrelationId           = ordem.CorrelationId,
+                OrdemServicoId          = ordem.Id,
+                ClienteId               = ordem.ClienteId,
+                VeiculoId               = ordem.VeiculoId,
+                DescricaoProblema       = ordem.DescricaoProblema,
+                NomeCliente             = cliente.Nome,
+                EmailCliente            = cliente.Email,
+                CorrelationIdRequisicao = _contexto.CorrelationId,
+            }, _contexto.CorrelationId, ct);
         }
 
         private void GarantirModoManual(string operacao)

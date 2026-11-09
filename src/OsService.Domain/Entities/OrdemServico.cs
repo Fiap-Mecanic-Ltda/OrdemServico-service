@@ -117,6 +117,20 @@ namespace OsService.Domain.Entities
 
         public void RegistrarPagamento(int pagamentoId) => PagamentoId = pagamentoId;
 
+        /// <summary>
+        /// Usa as datas informadas pela Execução (quem de fato executa o reparo) no lugar das
+        /// datas em que o OS Service processou as mudanças de status.
+        /// </summary>
+        public void RegistrarPeriodoExecucao(DateTime inicio, DateTime? fim)
+        {
+            if (fim.HasValue && fim.Value < inicio)
+                throw new RegraDeNegocioException("A data de fim da execução não pode ser anterior à de início.");
+
+            DataInicioExecucao = inicio;
+            if (fim.HasValue)
+                DataFimExecucao = fim;
+        }
+
         public ItemOrdemServico AdicionarItem(string descricao, TipoItemOrdemServico tipo, int quantidade,
                                               decimal valorUnitario, int? estoqueId, int? servicoOficinaId, DateTime agora)
         {

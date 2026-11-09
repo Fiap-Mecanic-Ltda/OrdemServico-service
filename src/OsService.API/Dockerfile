@@ -41,6 +41,7 @@ COPY ["src/OsService.Bootstrap/OsService.Bootstrap.csproj", "src/OsService.Boots
 COPY ["src/OsService.Application/OsService.Application.csproj", "src/OsService.Application/"]
 COPY ["src/OsService.Domain/OsService.Domain.csproj", "src/OsService.Domain/"]
 COPY ["src/OsService.Infrastructure/OsService.Infrastructure.csproj", "src/OsService.Infrastructure/"]
+COPY ["src/OsService.Contratos/OsService.Contratos.csproj", "src/OsService.Contratos/"]
 RUN dotnet restore "src/OsService.API/OsService.API.csproj"
 
 COPY src/ src/

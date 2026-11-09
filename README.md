@@ -110,6 +110,7 @@ antes do primeiro `terraform apply` da infra, o push na `main` pula a publicaç�
 | `RabbitMq__Host`, `RabbitMq__Usuario`, `RabbitMq__Senha` | `localhost`, `guest` | Broker da Saga |
 | `Mensageria__Transporte` | `RabbitMq` | `InMemory` só para testes: sem broker e sem nada durável |
 | `Simuladores__Habilitados` | `false` | Billing e Execução simulados no próprio processo (só local) |
+| `Simuladores__Execucao` / `Simuladores__Billing` | valor de `Simuladores__Habilitados` | Desliga só um dos simuladores. Com o [ExecucaoProducao-service](https://github.com/Fiap-Mecanic-Ltda/ExecucaoProducao-service) no mesmo RabbitMQ, use `Simuladores__Execucao=false` e o Billing segue simulado |
 
 As migrations são aplicadas na subida da API.
 

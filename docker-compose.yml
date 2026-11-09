@@ -48,9 +48,12 @@ services:
       - RabbitMq__Usuario=${RABBITMQ_USER}
       - RabbitMq__Senha=${RABBITMQ_PASSWORD}
       # Saga ligada com Billing e Execução simulados, para rodar o fluxo inteiro localmente.
-      # Com os serviços reais no ar: SIMULADORES_HABILITADOS=false.
+      # Com os serviços reais no ar: SIMULADORES_HABILITADOS=false, ou só o do serviço que
+      # subiu (SIMULADOR_EXECUCAO=false com o ExecucaoProducao-service no mesmo RabbitMQ).
       - Saga__Habilitada=${SAGA_HABILITADA:-true}
       - Simuladores__Habilitados=${SIMULADORES_HABILITADOS:-true}
+      - Simuladores__Execucao=${SIMULADOR_EXECUCAO:-${SIMULADORES_HABILITADOS:-true}}
+      - Simuladores__Billing=${SIMULADOR_BILLING:-${SIMULADORES_HABILITADOS:-true}}
       # MechanicLtda rodando no host (o compose dele expõe a API na 8080).
       - Integracoes__MechanicLtdaApi__BaseUrl=http://host.docker.internal:8080
     extra_hosts:

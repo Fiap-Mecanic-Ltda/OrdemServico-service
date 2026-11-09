@@ -31,13 +31,13 @@ namespace OsService.Bootstrap.Extensions
             }
 
             var emMemoria   = string.Equals(configuration["Mensageria:Transporte"], "InMemory", StringComparison.OrdinalIgnoreCase);
-            var simuladores = configuration.GetValue<bool>("Simuladores:Habilitados");
+            var simuladores = SimuladoresAtivos.Ler(configuration);
 
             if (emMemoria)
                 services.AddScoped<IPublicadorMensagens, PublicadorAposSalvar>();
             else
                 services.AddScoped<IPublicadorMensagens, PublicadorMassTransit>();
-            if (simuladores)
+            if (simuladores.Billing)
                 services.AddSingleton<MemoriaSimuladores>();
 
             services.AddMassTransit(x =>
@@ -78,11 +78,12 @@ namespace OsService.Bootstrap.Extensions
                     });
                 }
 
-                if (simuladores)
-                {
+                // Cada simulador sai sozinho quando o servico real entra no ar: com a Execucao
+                // real consumindo os comandos, Simuladores:Execucao=false e o Billing segue simulado.
+                if (simuladores.Execucao)
                     x.AddConsumer<SimuladorExecucao>().Endpoint(e => e.Name = "simulador-execucao");
+                if (simuladores.Billing)
                     x.AddConsumer<SimuladorBilling>().Endpoint(e => e.Name = "simulador-billing");
-                }
 
                 var filasDeEventos = FilasSaga.EventosExternos.Select(FilasSaga.FilaDoEvento).ToHashSet();
 

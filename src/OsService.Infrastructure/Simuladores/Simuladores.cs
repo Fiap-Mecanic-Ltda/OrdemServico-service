@@ -7,8 +7,9 @@ namespace OsService.Infrastructure.Simuladores
 {
     // Consumidores que fazem o papel da Execução e do Billing para rodar a Saga ponta a ponta
     // sem os outros serviços. Só são registrados com Simuladores:Habilitados=true (ambiente
-    // local). Nunca ligar num ambiente onde os serviços reais também consomem: os dois
-    // responderiam aos mesmos comandos.
+    // local), e cada um pode ser desligado sozinho (Simuladores:Execucao, Simuladores:Billing,
+    // ver SimuladoresAtivos). Nunca ligar o simulador de um serviço que também está no ar: os
+    // dois responderiam aos mesmos comandos.
     //
     // O cenário vem de marcadores na descrição do problema da OS:
     //   [falha-diagnostico]  → DiagnosticoFalhou

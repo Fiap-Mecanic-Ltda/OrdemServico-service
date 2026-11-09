@@ -62,8 +62,23 @@ dotnet run --project src/OsService.API          # http://localhost:5070/swagger
 ## Testes
 
 ```bash
-dotnet test OsService.sln --settings coverlet.runsettings --collect:"XPlat Code Coverage"
+dotnet test OsService.sln --settings coverlet.runsettings --collect:"XPlat Code Coverage" --results-directory coverage
+dotnet tool install -g dotnet-reportgenerator-globaltool
+reportgenerator -reports:"coverage/**/coverage.cobertura.xml" -targetdir:coverage/relatorio -reporttypes:"Cobertura;Html"
+python3 scripts/verificar-cobertura.py coverage/relatorio/Cobertura.xml 80
 ```
+
+| Projeto | O que cobre |
+|---|---|
+| `tests/OsService.UnitTests` | Domínio, aplicação (Moq), infraestrutura (gateway, repositório EF InMemory, verificador de prazos) e a state machine da Saga com o test harness do MassTransit, passo a passo e compensação por compensação |
+| `tests/OsService.API.Tests` | API em memória (WebApplicationFactory com JWT, banco e gateway falsos) e a Saga ponta a ponta com transporte em memória e os simuladores |
+| `tests/OsService.API.Tests/Bdd` | Cenários BDD em Reqnroll: `fluxo-completo.feature` (caminho feliz) e `pagamento-recusado.feature` (compensações) |
+
+A esteira falha se a cobertura de linhas ficar abaixo de 80% e publica o relatório no resumo
+do job. Com o secret `SONAR_TOKEN` configurado no repositório, ela também analisa o código no
+SonarCloud e falha se o quality gate reprovar. As variáveis `SONAR_ORGANIZATION` e
+`SONAR_PROJECT_KEY` são opcionais e têm padrão `fiap-mecanic-ltda` e
+`Fiap-Mecanic-Ltda_OrdemServico-service`.
 
 ## Configuração
 

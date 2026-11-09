@@ -83,7 +83,7 @@ SonarCloud e falha se o quality gate reprovar. As variáveis `SONAR_ORGANIZATION
 ## Esteira (CI/CD)
 
 `.github/workflows/ci.yml` roda build, testes, gate de cobertura e build da imagem em todo PR.
-No push na `main`, ela também publica a imagem `mechanicltda-os` no ECR (tags SHA e `latest`) e
+No push na `main`, com a Repository Variable `PUBLICAR_AWS=true`, ela também publica a imagem `mechanicltda-os` no ECR (tags SHA e `latest`) e
 dispara o deploy no `OrdemServico-InfraKubernete` (`repository_dispatch` do tipo
 `imagem-publicada`). Secrets do repositório:
 
@@ -94,7 +94,9 @@ dispara o deploy no `OrdemServico-InfraKubernete` (`repository_dispatch` do tipo
 | `OS_INFRA_DISPATCH_TOKEN` | Token fine-grained com Contents read/write só no OrdemServico-InfraKubernete. Sem ele, a imagem é publicada e o deploy fica manual |
 | `SONAR_TOKEN` | Opcional por enquanto (ver Testes) |
 
-Antes do primeiro `terraform apply` da infra, o push na `main` pula a publicação com um aviso.
+A publicação fica travada enquanto `PUBLICAR_AWS` não for `true` (Settings → Secrets and
+variables → Actions → Variables): o push na `main` só builda e testa. Com a variável ligada mas
+antes do primeiro `terraform apply` da infra, o push na `main` pula a publicação com um aviso.
 
 ## Configuração
 

@@ -80,6 +80,22 @@ SonarCloud e falha se o quality gate reprovar. As variáveis `SONAR_ORGANIZATION
 `SONAR_PROJECT_KEY` são opcionais e têm padrão `fiap-mecanic-ltda` e
 `Fiap-Mecanic-Ltda_OrdemServico-service`.
 
+## Esteira (CI/CD)
+
+`.github/workflows/ci.yml` roda build, testes, gate de cobertura e build da imagem em todo PR.
+No push na `main`, ela também publica a imagem `mechanicltda-os` no ECR (tags SHA e `latest`) e
+dispara o deploy no `OrdemServico-InfraKubernete` (`repository_dispatch` do tipo
+`imagem-publicada`). Secrets do repositório:
+
+| Secret | Uso |
+|---|---|
+| `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` | Só para conferir se a role de OIDC já existe (mesma chave do terraform-deployer usada no MechanicLtda) |
+| `AWS_ROLE_ARN` | Role `mechanicltda-prod-os-github-actions`, criada pelo Terraform do OrdemServico-InfraKubernete |
+| `OS_INFRA_DISPATCH_TOKEN` | Token fine-grained com Contents read/write só no OrdemServico-InfraKubernete. Sem ele, a imagem é publicada e o deploy fica manual |
+| `SONAR_TOKEN` | Opcional por enquanto (ver Testes) |
+
+Antes do primeiro `terraform apply` da infra, o push na `main` pula a publicação com um aviso.
+
 ## Configuração
 
 | Chave | Padrão | Uso |

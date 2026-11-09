@@ -48,6 +48,7 @@ builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<IContextoRequisicao, ContextoRequisicaoHttp>();
 builder.Services.AddDatabase(builder.Configuration);
 builder.Services.AddDependencyInjection(builder.Configuration);
+builder.Services.AddMensageria(builder.Configuration);
 builder.Services.AddJwtAuthentication(builder.Configuration);
 builder.Services.AddAuthorization();
 

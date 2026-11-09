@@ -1,6 +1,6 @@
 # ADR-002 — Saga orquestrada pelo OS Service
 
-- **Status:** proposto
+- **Status:** aceito
 - **Data:** 2026-11-09
 
 ## Contexto
@@ -22,11 +22,25 @@ A Saga é **orquestrada** e o orquestrador é o **OS Service**:
 | Falha | Compensação | Status final |
 |---|---|---|
 | `DiagnosticoFalhou` | nenhuma | `Recebida` |
-| `OrcamentoFalhou` | nenhuma | `EmDiagnostico` |
+| `OrcamentoFalhou` | nenhuma (reenvia `IniciarDiagnostico`) | `EmDiagnostico` |
 | `OrcamentoRecusado` | `LiberarReservaEstoque` | `Cancelada` |
 | `PagamentoFalhou` | `CancelarOrcamento` + `LiberarReservaEstoque` | `Cancelada` |
 | `ExecucaoFalhou` | `EstornarPagamento` + `CancelarOrcamento` | `Cancelada` |
 | Prazo de aprovação expirado | `CancelarOrcamento` + `LiberarReservaEstoque` | `Cancelada` |
+| Prazo de diagnóstico expirado | `LiberarReservaEstoque` | `Recebida` |
+| Cancelamento manual durante o diagnóstico | `LiberarReservaEstoque` | `Cancelada` |
+
+## Implementação
+
+- State machine `OrdemServicoStateMachine` (MassTransit 8), estado na tabela `os.SagaOrdemServico`
+  com lock pessimista: duas mensagens da mesma OS nunca são processadas ao mesmo tempo.
+- Status da OS, estado da Saga e mensagens publicadas são gravados na mesma transação
+  (inbox e outbox do MassTransit no SQL Server do serviço).
+- Cada evento externo chega numa fila própria (`os-<evento>`) e é repassado para a fila
+  `os-ordem-servico-saga`. Assim os outros serviços podem publicar JSON puro, sem cabeçalhos do
+  MassTransit.
+- Os prazos ficam em colunas do estado da Saga e são verificados a cada minuto por um serviço em
+  segundo plano. Assim não é preciso agendador nem o plugin de mensagens atrasadas do RabbitMQ.
 
 ## Alternativas
 

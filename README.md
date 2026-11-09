@@ -72,9 +72,29 @@ dotnet test OsService.sln --settings coverlet.runsettings --collect:"XPlat Code 
 | `JWT_SECRET_KEY` | (obrigatória) | Mesma chave do MechanicLtda e da Lambda |
 | `ConnectionStrings__DefaultConnection` | SQL Server local | Banco próprio do serviço (schema `os`) |
 | `Integracoes__MechanicLtdaApi__BaseUrl` | `http://localhost:8080` | API do MechanicLtda, usada para validar cliente e veículo |
-| `Saga__Habilitada` | `false` | Com `true`, as transições feitas pela Saga ficam bloqueadas na API (409) |
+| `Saga__Habilitada` | `false` | Liga a Saga (RabbitMQ). Com `true`, as transições feitas pela Saga ficam bloqueadas na API (409) |
+| `Saga__PrazoDiagnosticoHoras` / `Saga__PrazoAprovacaoHoras` | `48` / `72` | Prazos da Saga (ver contratos) |
+| `RabbitMq__Host`, `RabbitMq__Usuario`, `RabbitMq__Senha` | `localhost`, `guest` | Broker da Saga |
+| `Mensageria__Transporte` | `RabbitMq` | `InMemory` só para testes: sem broker e sem nada durável |
+| `Simuladores__Habilitados` | `false` | Billing e Execução simulados no próprio processo (só local) |
 
 As migrations são aplicadas na subida da API.
+
+## Saga
+
+Com `Saga__Habilitada=true` a OS anda sozinha a partir do diagnóstico: o OS Service publica
+os comandos para Billing e Execução e reage aos eventos deles
+([contratos](docs/contratos-eventos.md), [ADR-002](docs/adr/ADR-002-saga-orquestrada.md)).
+O `docker-compose` já sobe assim, com os dois serviços simulados. Para ver o fluxo:
+
+1. `POST /api/ordemservico` e depois `PATCH /api/ordemservico/{id}/iniciar-diagnostico`.
+2. `GET /api/ordemservico/{id}/historico` mostra Recebida → Diagnóstico → Aguardando Orçamento →
+   Aguardando Aprovação → Aguardando Pagamento → Execução → Finalizada, com origem `Saga`.
+3. Para ver uma compensação, coloque um marcador na descrição do problema:
+   `[falha-pagamento]`, `[falha-execucao]`, `[recusar]` ou `[falha-diagnostico]`.
+
+As filas aparecem no painel do RabbitMQ: `os-<evento>` para cada evento recebido,
+`os-ordem-servico-saga` para a Saga e `simulador-*` para os simuladores.
 
 ## Endpoints
 

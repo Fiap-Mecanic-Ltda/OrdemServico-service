@@ -13,11 +13,11 @@ nos três repositórios; qualquer mudança aqui passa por PR nos três.
 |---|---|
 | Broker | RabbitMQ (namespace `mensageria` do cluster k3s; `localhost:5672` no docker-compose) |
 | Publicação | Toda mensagem é **publicada** num exchange `fanout` com o nome da mensagem, ex.: `MechanicLtda.Contratos:GerarOrcamento`. Quem consome cria a própria fila e faz o bind. Ninguém precisa saber o nome da fila do outro |
-| Fila de cada consumidor | `<servico>-<mensagem-em-kebab>`, ex.: `billing-gerar-orcamento`, `os-orcamento-aprovado` |
+| Fila de cada consumidor | `<servico>-<mensagem-em-kebab>`, ex.: `billing-gerar-orcamento`, `os-orcamento-aprovado`. Uma fila por mensagem: assim o consumidor sabe o tipo pela fila e o JSON não precisa de cabeçalho de tipo |
 | Corpo | JSON puro (sem envelope), UTF-8, propriedades em `camelCase`, datas em ISO 8601 UTC, valores monetários em `decimal` com 2 casas |
 | Cabeçalhos | `correlation-id` (o mesmo `correlationId` do corpo) e `x-correlation-id` (o `X-Correlation-Id` HTTP que originou o fluxo, para o rastreio no New Relic) |
 | Correlação | `correlationId` (GUID) identifica **a Saga de uma OS** e é gerado pelo OS Service na abertura. Toda resposta devolve o mesmo valor |
-| Idempotência | A mesma mensagem pode chegar mais de uma vez (at-least-once). Consumidores tratam duplicatas pelo par `correlationId` + nome da mensagem |
+| Idempotência | A mesma mensagem pode chegar mais de uma vez (at-least-once). Consumidores tratam duplicatas pelo par `correlationId` + nome da mensagem. Preencher a propriedade AMQP `message_id` (GUID) é recomendado; o MassTransit faz isso sozinho |
 | Falhas | Erro de negócio vira uma mensagem de falha (`...Falhou`). Erro técnico é reprocessado pelo consumidor (retry) e, esgotado, vai para a fila `_error` |
 | Compatibilidade | Campo novo é opcional; remover ou renomear campo exige nova versão da mensagem (`...V2`) |
 
@@ -65,7 +65,7 @@ abertura da OS.
 | Mensagem | Campos | Efeito no OS Service |
 |---|---|---|
 | `DiagnosticoConcluido` | `itens: ItemOrdemServico[]`, `observacao?` | Grava os itens e vai para `AguardandoOrcamento`; envia `GerarOrcamento` |
-| `DiagnosticoFalhou` | `motivo` | Volta para `Recebida` e registra a falha |
+| `DiagnosticoFalhou` | `motivo` | Volta para `Recebida` e registra a falha; a Saga termina e recomeça num novo `iniciar-diagnostico` |
 | `ExecucaoIniciada` | `dataInicio` | Registra `dataInicioExecucao` (status continua `EmExecucao`) |
 | `ExecucaoFinalizada` | `dataInicio`, `dataFim` | Vai para `Finalizada` |
 | `ExecucaoFalhou` | `motivo` | Compensação: `EstornarPagamento` + `CancelarOrcamento`; vai para `Compensando` |
@@ -75,7 +75,7 @@ abertura da OS.
 | Mensagem | Campos | Efeito no OS Service |
 |---|---|---|
 | `OrcamentoGerado` | `orcamentoId`, `valorTotal`, `validade` | Vai para `AguardandoAprovacao` |
-| `OrcamentoFalhou` | `motivo` | Volta para `EmDiagnostico` |
+| `OrcamentoFalhou` | `motivo` | Volta para `EmDiagnostico` e reenvia `IniciarDiagnostico` para a Execução refazer o diagnóstico |
 | `OrcamentoAprovado` | `orcamentoId` | Vai para `AguardandoPagamento`; envia `SolicitarPagamento` |
 | `OrcamentoRecusado` | `orcamentoId`, `motivo?` | Compensação: `LiberarReservaEstoque`; vai para `Cancelada` |
 | `PagamentoConfirmado` | `pagamentoId`, `valor`, `meioPagamento` | Vai para `EmExecucao`; envia `IniciarExecucao` |
@@ -85,6 +85,20 @@ abertura da OS.
 
 A compensação termina (status `Cancelada`) quando todas as confirmações pedidas chegaram
 (`OrcamentoCancelado` e, se houve pagamento, `PagamentoEstornado`).
+
+## Início, prazos e mensagens fora de ordem
+
+- A Saga começa quando a OS vai para diagnóstico (`PATCH /api/ordemservico/{id}/iniciar-diagnostico`,
+  ou o `PUT` com valor estimado). É nesse momento que o OS Service lê nome e e-mail do cliente.
+- Prazos: a Execução tem `Saga:PrazoDiagnosticoHoras` (padrão 48 h) para responder ao
+  `IniciarDiagnostico`. Vencido, o OS Service envia `LiberarReservaEstoque` e a OS volta para
+  `Recebida`. A aprovação do orçamento vence em `validade` (do `OrcamentoGerado`) ou, sem ela, em
+  `Saga:PrazoAprovacaoHoras` (padrão 72 h), com a compensação `CancelarOrcamento` +
+  `LiberarReservaEstoque`.
+- Cancelar a OS pela API durante o diagnóstico envia `LiberarReservaEstoque`. Depois do
+  diagnóstico, o cancelamento manual fica bloqueado com a Saga ligada.
+- Um evento repetido ou que chega num passo em que não é esperado é ignorado (fica no log). Um
+  evento de uma Saga que já terminou é descartado.
 
 ## Evento publicado pelo OS Service
 

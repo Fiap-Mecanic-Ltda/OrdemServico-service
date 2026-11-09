@@ -33,6 +33,9 @@ namespace OsService.API.Tests
             builder.UseEnvironment("Testing");
             builder.UseSetting("JWT_SECRET_KEY", ChaveJwtTeste);
             builder.UseSetting("Saga:Habilitada", SagaHabilitada.ToString());
+            // Com a Saga ligada: broker em memória e Billing/Execução simulados no próprio processo.
+            builder.UseSetting("Mensageria:Transporte", "InMemory");
+            builder.UseSetting("Simuladores:Habilitados", "true");
 
             builder.ConfigureServices(services =>
             {
@@ -70,7 +73,7 @@ namespace OsService.API.Tests
         }
     }
 
-    /// <summary>Mesma API, com a Saga ligada (transições da Saga bloqueadas na API).</summary>
+    /// <summary>Mesma API com a Saga ligada, rodando ponta a ponta com os simuladores.</summary>
     public class OsServiceApiFactoryComSaga : OsServiceApiFactory
     {
         protected override bool SagaHabilitada => true;

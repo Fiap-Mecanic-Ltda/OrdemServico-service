@@ -204,18 +204,123 @@ namespace OsService.API.Tests
 
     public class OrdemServicoApiComSagaTests : IClassFixture<OsServiceApiFactoryComSaga>
     {
+        private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
+        {
+            Converters = { new JsonStringEnumConverter() }
+        };
+
         private readonly HttpClient _admin;
 
         public OrdemServicoApiComSagaTests(OsServiceApiFactoryComSaga factory) => _admin = factory.ClienteComRole("Funcionario");
 
+        private record Os(int Id, int Status, int? OrcamentoId, int? PagamentoId, DateTime? DataInicioExecucao,
+                          DateTime? DataFimExecucao, List<JsonElement> Itens);
+        private record Historico(int? StatusAnterior, int StatusNovo, string Origem, string? Motivo);
+
+        private async Task<int> AbrirEDiagnosticarAsync(string descricao)
+        {
+            var aberta = await _admin.PostAsJsonAsync("/api/ordemservico", new { clienteId = 1, veiculoId = 10, descricaoProblema = descricao });
+            var id = (await aberta.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetInt32();
+
+            var diagnostico = await _admin.PatchAsync($"/api/ordemservico/{id}/iniciar-diagnostico", null);
+            Assert.Equal(HttpStatusCode.OK, diagnostico.StatusCode);
+            return id;
+        }
+
+        /// <summary>A Saga anda sozinha; espera o histórico chegar ao status esperado.</summary>
+        private async Task<List<Historico>> EsperarStatusAsync(int id, int status, int ocorrencias = 1)
+        {
+            var limite = DateTime.UtcNow.AddSeconds(20);
+            List<Historico> historico;
+            do
+            {
+                historico = (await _admin.GetFromJsonAsync<List<Historico>>($"/api/ordemservico/{id}/historico", Json))!;
+                if (historico.Count(h => h.StatusNovo == status) >= ocorrencias)
+                    return historico;
+                await Task.Delay(100);
+            } while (DateTime.UtcNow < limite);
+
+            Assert.Fail($"A OS {id} não chegou ao status {status}. Histórico: {string.Join(" > ", historico.Select(h => h.StatusNovo))}");
+            return historico;
+        }
+
         [Fact]
-        public async Task Transicoes_da_saga_respondem_409()
+        public async Task Fluxo_completo_vai_de_recebida_a_finalizada()
+        {
+            var id = await AbrirEDiagnosticarAsync("Barulho no freio");
+
+            var historico = await EsperarStatusAsync(id, 5);
+
+            Assert.Equal([1, 2, 7, 3, 8, 4, 5], historico.Select(h => h.StatusNovo));
+            Assert.All(historico.Skip(2), h => Assert.Equal("Saga", h.Origem));
+
+            var os = await _admin.GetFromJsonAsync<Os>($"/api/ordemservico/{id}", Json);
+            Assert.Equal(1000 + id, os!.OrcamentoId);
+            Assert.Equal(2000 + id, os.PagamentoId);
+            Assert.Equal(2, os.Itens.Count);
+            Assert.NotNull(os.DataInicioExecucao);
+            Assert.NotNull(os.DataFimExecucao);
+
+            // A entrega continua manual.
+            Assert.Equal(HttpStatusCode.OK, (await _admin.PatchAsync($"/api/ordemservico/{id}/entregar", null)).StatusCode);
+        }
+
+        [Fact]
+        public async Task Falha_no_pagamento_cancela_o_orcamento_e_termina_cancelada()
+        {
+            var id = await AbrirEDiagnosticarAsync("Troca de óleo [falha-pagamento]");
+
+            var historico = await EsperarStatusAsync(id, 10);
+
+            Assert.Equal([1, 2, 7, 3, 8, 9, 10], historico.Select(h => h.StatusNovo));
+            Assert.StartsWith("Pagamento falhou", historico[5].Motivo);
+            Assert.StartsWith("Compensação concluída", historico[6].Motivo);
+        }
+
+        [Fact]
+        public async Task Falha_na_execucao_estorna_o_pagamento_e_cancela_o_orcamento()
+        {
+            var id = await AbrirEDiagnosticarAsync("Motor falhando [falha-execucao]");
+
+            var historico = await EsperarStatusAsync(id, 10);
+
+            Assert.Equal([1, 2, 7, 3, 8, 4, 9, 10], historico.Select(h => h.StatusNovo));
+            Assert.Null((await _admin.GetFromJsonAsync<Os>($"/api/ordemservico/{id}", Json))!.DataFimExecucao);
+        }
+
+        [Fact]
+        public async Task Orcamento_recusado_cancela_a_OS()
+        {
+            var id = await AbrirEDiagnosticarAsync("Pintura [recusar]");
+
+            var historico = await EsperarStatusAsync(id, 10);
+
+            Assert.Equal([1, 2, 7, 3, 10], historico.Select(h => h.StatusNovo));
+        }
+
+        [Fact]
+        public async Task Falha_no_diagnostico_devolve_a_OS_para_recebida_e_permite_tentar_de_novo()
+        {
+            var id = await AbrirEDiagnosticarAsync("Ruído [falha-diagnostico]");
+
+            var historico = await EsperarStatusAsync(id, 1, ocorrencias: 2);
+            Assert.Equal([1, 2, 1], historico.Select(h => h.StatusNovo));
+
+            Assert.Equal(HttpStatusCode.OK, (await _admin.PatchAsync($"/api/ordemservico/{id}/iniciar-diagnostico", null)).StatusCode);
+            await EsperarStatusAsync(id, 1, ocorrencias: 3);
+        }
+
+        [Theory]
+        [InlineData("aguardar-aprovacao")]
+        [InlineData("aprovar")]
+        [InlineData("recusar")]
+        [InlineData("finalizar")]
+        public async Task Transicoes_da_saga_respondem_409(string acao)
         {
             var aberta = await _admin.PostAsJsonAsync("/api/ordemservico", new { clienteId = 1, veiculoId = 10, descricaoProblema = "Teste" });
             var id = (await aberta.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetInt32();
-            await _admin.PatchAsync($"/api/ordemservico/{id}/iniciar-diagnostico", null);
 
-            var resposta = await _admin.PatchAsync($"/api/ordemservico/{id}/aguardar-aprovacao", null);
+            var resposta = await _admin.PatchAsync($"/api/ordemservico/{id}/{acao}", null);
 
             Assert.Equal(HttpStatusCode.Conflict, resposta.StatusCode);
         }

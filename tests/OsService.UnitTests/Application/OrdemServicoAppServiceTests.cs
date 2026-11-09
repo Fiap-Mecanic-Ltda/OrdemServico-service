@@ -5,6 +5,8 @@ using OsService.Application.DTOs;
 using OsService.Application.Exceptions;
 using OsService.Application.Interfaces;
 using OsService.Application.Options;
+using OsService.Application.Saga;
+using MechanicLtda.Contratos;
 using OsService.Domain.Entities;
 using OsService.Domain.Enums;
 using OsService.Domain.Exceptions;
@@ -21,6 +23,7 @@ namespace OsService.UnitTests.Application
         private readonly Mock<IMonitoramentoService> _monitoramento = new();
         private readonly Mock<IContextoRequisicao> _contexto = new();
         private readonly Mock<IRelogio> _relogio = new();
+        private readonly Mock<IPublicadorMensagens> _publicador = new();
 
         public OrdemServicoAppServiceTests()
         {
@@ -29,7 +32,7 @@ namespace OsService.UnitTests.Application
         }
 
         private OrdemServicoAppService Criar(bool sagaHabilitada = false) =>
-            new(_repositorio.Object, _gateway.Object, _monitoramento.Object, _contexto.Object, _relogio.Object,
+            new(_repositorio.Object, _gateway.Object, _monitoramento.Object, _contexto.Object, _relogio.Object, _publicador.Object,
                 MsOptions.Create(new SagaOptions { Habilitada = sagaHabilitada }),
                 NullLogger<OrdemServicoAppService>.Instance);
 
@@ -283,14 +286,85 @@ namespace OsService.UnitTests.Application
         }
 
         [Fact]
-        public async Task Com_a_saga_ligada_o_diagnostico_e_a_entrega_continuam_manuais()
+        public async Task Com_a_saga_ligada_o_diagnostico_comeca_a_saga_com_os_dados_do_cliente()
         {
             var ordem = NovaOrdem();
             RepositorioDevolve(ordem);
+            _gateway.Setup(g => g.ObterClienteAsync(1, It.IsAny<CancellationToken>()))
+                    .ReturnsAsync(new ClienteResumo(1, "Ana", "ana@x.com"));
 
             var dto = await Criar(sagaHabilitada: true).IniciarDiagnosticoAsync(10);
 
             Assert.Equal(StatusOrdemServico.EmDiagnostico, dto.Status);
+            _publicador.Verify(p => p.PublicarAsync(
+                It.Is<DiagnosticoSolicitado>(m => m.CorrelationId == ordem.CorrelationId && m.NomeCliente == "Ana"
+                                                  && m.EmailCliente == "ana@x.com" && m.CorrelationIdRequisicao == "req-1"),
+                "req-1", It.IsAny<CancellationToken>()), Times.Once);
+            _publicador.Verify(p => p.PublicarAsync(
+                It.Is<OrdemServicoStatusAlterado>(m => m.StatusAnterior == "Recebida" && m.StatusAtual == "EmDiagnostico"),
+                "req-1", It.IsAny<CancellationToken>()), Times.Once);
+            _publicador.Verify(p => p.ConfirmarAsync(It.IsAny<CancellationToken>()), Times.Once);
+        }
+
+        [Fact]
+        public async Task Com_a_saga_ligada_o_diagnostico_exige_o_cliente_cadastrado()
+        {
+            RepositorioDevolve(NovaOrdem());
+
+            await Assert.ThrowsAsync<RecursoNaoEncontradoException>(() => Criar(sagaHabilitada: true).IniciarDiagnosticoAsync(10));
+            _repositorio.Verify(r => r.SalvarAsync(It.IsAny<CancellationToken>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task Com_a_saga_desligada_nada_e_publicado()
+        {
+            RepositorioDevolve(NovaOrdem());
+
+            await Criar().IniciarDiagnosticoAsync(10);
+
+            _publicador.Verify(p => p.PublicarAsync(It.IsAny<object>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Never);
+            _gateway.Verify(g => g.ObterClienteAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task Com_a_saga_ligada_a_entrega_continua_manual()
+        {
+            RepositorioDevolve(NovaOrdem(StatusOrdemServico.Finalizada));
+
+            var dto = await Criar(sagaHabilitada: true).EntregarAsync(10);
+
+            Assert.Equal(StatusOrdemServico.Entregue, dto.Status);
+        }
+
+        [Fact]
+        public async Task Com_a_saga_ligada_cancelar_no_diagnostico_avisa_a_saga()
+        {
+            var ordem = NovaOrdem(StatusOrdemServico.EmDiagnostico);
+            RepositorioDevolve(ordem);
+
+            await Criar(sagaHabilitada: true).CancelarAsync(10, "Cliente desistiu");
+
+            _publicador.Verify(p => p.PublicarAsync(
+                It.Is<OrdemServicoCanceladaManualmente>(m => m.CorrelationId == ordem.CorrelationId && m.Motivo == "Cliente desistiu"),
+                It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Once);
+        }
+
+        [Fact]
+        public async Task Com_a_saga_ligada_cancelar_OS_recebida_nao_avisa_a_saga()
+        {
+            RepositorioDevolve(NovaOrdem());
+
+            await Criar(sagaHabilitada: true).CancelarAsync(10, null);
+
+            _publicador.Verify(p => p.PublicarAsync(It.IsAny<OrdemServicoCanceladaManualmente>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()), Times.Never);
+        }
+
+        [Fact]
+        public async Task Com_a_saga_ligada_so_a_OS_recebida_pode_ser_removida()
+        {
+            RepositorioDevolve(NovaOrdem(StatusOrdemServico.EmDiagnostico));
+
+            await Assert.ThrowsAsync<RegraDeNegocioException>(() => Criar(sagaHabilitada: true).RemoverAsync(10));
         }
 
         [Fact]

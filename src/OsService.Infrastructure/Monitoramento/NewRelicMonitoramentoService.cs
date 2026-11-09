@@ -53,6 +53,24 @@ namespace OsService.Infrastructure.Monitoramento
                 ["mensagem"]   = Limitar(excecao.Message),
             });
 
+        public void RegistrarPassoSaga(Guid correlationId, int ordemServicoId, string evento, string estado) =>
+            Registrar("SagaPassoConcluido", new Dictionary<string, object>
+            {
+                ["correlationId"]  = correlationId.ToString(),
+                ["ordemServicoId"] = ordemServicoId,
+                ["evento"]         = evento,
+                ["estado"]         = estado,
+            });
+
+        public void RegistrarCompensacaoSaga(Guid correlationId, int ordemServicoId, string motivo, IReadOnlyCollection<string> compensacoes) =>
+            Registrar("SagaCompensada", new Dictionary<string, object>
+            {
+                ["correlationId"]  = correlationId.ToString(),
+                ["ordemServicoId"] = ordemServicoId,
+                ["motivo"]         = Limitar(motivo),
+                ["compensacoes"]   = string.Join(",", compensacoes),
+            });
+
         private void Registrar(string tipoEvento, Dictionary<string, object> atributos)
         {
             atributos["servico"] = Servico;

@@ -1,6 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
+    <PackageReference Include="MassTransit" Version="8.5.12" />
     <PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" Version="9.0.15" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="9.0.15" />
     <PackageReference Include="Microsoft.Extensions.Options" Version="9.0.15" />
@@ -8,6 +9,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\OsService.Domain\OsService.Domain.csproj" />
+    <ProjectReference Include="..\OsService.Contratos\OsService.Contratos.csproj" />
   </ItemGroup>
 
 </Project>

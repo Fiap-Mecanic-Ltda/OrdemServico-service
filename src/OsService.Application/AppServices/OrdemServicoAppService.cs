@@ -44,12 +44,11 @@ namespace OsService.Application.AppServices
         private static readonly Dictionary<StatusOrdemServico, int> _prioridadeListagem = new()
         {
             [StatusOrdemServico.EmExecucao]          = 1,
-            [StatusOrdemServico.AguardandoPagamento] = 2,
-            [StatusOrdemServico.AguardandoAprovacao] = 3,
-            [StatusOrdemServico.AguardandoOrcamento] = 4,
-            [StatusOrdemServico.EmDiagnostico]       = 5,
-            [StatusOrdemServico.Compensando]         = 6,
-            [StatusOrdemServico.Recebida]            = 7,
+            [StatusOrdemServico.AguardandoAprovacao] = 2,
+            [StatusOrdemServico.AguardandoOrcamento] = 3,
+            [StatusOrdemServico.EmDiagnostico]       = 4,
+            [StatusOrdemServico.Compensando]         = 5,
+            [StatusOrdemServico.Recebida]            = 6,
         };
 
         private readonly IOrdemServicoRepository _repositorio;

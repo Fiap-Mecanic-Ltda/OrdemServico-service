@@ -25,12 +25,9 @@ namespace OsService.Domain.Regras
                 [StatusOrdemServico.AguardandoAprovacao, StatusOrdemServico.EmDiagnostico,
                  StatusOrdemServico.Cancelada],
 
-            // EmExecucao direto: aprovação no fluxo manual, sem etapa de pagamento.
+            // O pagamento é feito com a OS neste status: pagamento confirmado (Saga) ou aprovação
+            // manual (Saga desligada) levam direto para EmExecucao.
             [StatusOrdemServico.AguardandoAprovacao] =
-                [StatusOrdemServico.AguardandoPagamento, StatusOrdemServico.EmExecucao,
-                 StatusOrdemServico.Compensando, StatusOrdemServico.Cancelada],
-
-            [StatusOrdemServico.AguardandoPagamento] =
                 [StatusOrdemServico.EmExecucao, StatusOrdemServico.Compensando, StatusOrdemServico.Cancelada],
 
             [StatusOrdemServico.EmExecucao] =

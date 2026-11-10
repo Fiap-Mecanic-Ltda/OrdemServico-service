@@ -4,8 +4,9 @@ namespace OsService.Domain.Enums
 {
     /// <summary>
     /// Status da Ordem de Serviço. Os valores 1 a 6 são os mesmos da API da Fase 3 (não
-    /// mudam, para não quebrar clientes); 7 a 10 entram com a Saga. A tabela completa está em
-    /// docs/contratos-eventos.md.
+    /// mudam, para não quebrar clientes); 7, 9 e 10 entram com a Saga. O 8 (Aguardando Pagamento)
+    /// saiu: o pagamento acontece com a OS em Aguardando Aprovação. Não reutilizar o 8. A tabela
+    /// completa está em docs/contratos-eventos.md.
     /// </summary>
     public enum StatusOrdemServico
     {
@@ -23,8 +24,6 @@ namespace OsService.Domain.Enums
         Entregue = 6,
         [Display(Name = "Aguardando Orçamento")]
         AguardandoOrcamento = 7,
-        [Display(Name = "Aguardando Pagamento")]
-        AguardandoPagamento = 8,
         [Display(Name = "Compensando")]
         Compensando = 9,
         [Display(Name = "Cancelada")]

@@ -120,9 +120,13 @@ O `docker-compose` já sobe assim, com os dois serviços simulados. Para ver o f
 
 1. `POST /api/ordemservico` e depois `PATCH /api/ordemservico/{id}/iniciar-diagnostico`.
 2. `GET /api/ordemservico/{id}/historico` mostra Recebida → Diagnóstico → Aguardando Orçamento →
-   Aguardando Aprovação → Aguardando Pagamento → Execução → Finalizada, com origem `Saga`.
+   Aguardando Aprovação → Execução → Finalizada, com origem `Saga`.
 3. Para ver uma compensação, coloque um marcador na descrição do problema:
-   `[falha-pagamento]`, `[falha-execucao]`, `[recusar]` ou `[falha-diagnostico]`.
+   `[falha-execucao]`, `[recusar]` ou `[falha-diagnostico]`. Já `[falha-pagamento]` simula um
+   cartão recusado: a OS continua em Aguardando Aprovação e o pagamento passa na segunda tentativa.
+
+O pagamento é feito com a OS em **Aguardando Aprovação**: o cliente aprova o orçamento pagando, e o
+pagamento confirmado leva a OS para Execução (ver "Regra do pagamento" nos contratos).
 
 As filas aparecem no painel do RabbitMQ: `os-<evento>` para cada evento recebido,
 `os-ordem-servico-saga` para a Saga e `simulador-*` para os simuladores.

@@ -8,11 +8,11 @@ Funcionalidade: Fluxo completo da Ordem de Serviço
     Dado que a Saga está ligada com Billing e Execução simulados
     E que estou autenticado como funcionário
 
-  Cenário: OS aprovada e paga é executada e finalizada
+  Cenário: OS paga em Aguardando Aprovação é executada e finalizada
     Dado uma OS aberta para o cliente 1 e o veículo 10 com o problema "Barulho no freio dianteiro"
     Quando eu inicio o diagnóstico
     Então a OS chega ao status "Finalizada"
-    E o histórico mostra os status "Recebida, Diagnóstico, Aguardando Orçamento, Aguardando Aprovação, Aguardando Pagamento, Execução, Finalizada"
+    E o histórico mostra os status "Recebida, Diagnóstico, Aguardando Orçamento, Aguardando Aprovação, Execução, Finalizada"
     E as mudanças depois do diagnóstico foram feitas pela Saga
     E a OS guarda o orçamento e o pagamento
 
@@ -21,3 +21,10 @@ Funcionalidade: Fluxo completo da Ordem de Serviço
     E que eu iniciei o diagnóstico e a OS foi finalizada
     Quando eu registro a entrega
     Então a OS fica com o status "Entregue"
+
+  Cenário: Pagamento recusado não cancela a OS e o cliente paga de novo
+    Dado uma OS aberta para o cliente 1 e o veículo 10 com o problema "Revisão completa [falha-pagamento]"
+    Quando eu inicio o diagnóstico
+    Então a OS chega ao status "Finalizada"
+    E o histórico mostra os status "Recebida, Diagnóstico, Aguardando Orçamento, Aguardando Aprovação, Execução, Finalizada"
+    E a OS guarda o orçamento e o pagamento

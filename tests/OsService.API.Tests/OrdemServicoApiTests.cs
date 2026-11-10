@@ -251,7 +251,7 @@ namespace OsService.API.Tests
 
             var historico = await EsperarStatusAsync(id, 5);
 
-            Assert.Equal([1, 2, 7, 3, 8, 4, 5], historico.Select(h => h.StatusNovo));
+            Assert.Equal([1, 2, 7, 3, 4, 5], historico.Select(h => h.StatusNovo));
             Assert.All(historico.Skip(2), h => Assert.Equal("Saga", h.Origem));
 
             var os = await _admin.GetFromJsonAsync<Os>($"/api/ordemservico/{id}", Json);
@@ -266,15 +266,14 @@ namespace OsService.API.Tests
         }
 
         [Fact]
-        public async Task Falha_no_pagamento_cancela_o_orcamento_e_termina_cancelada()
+        public async Task Pagamento_recusado_nao_cancela_e_a_segunda_tentativa_leva_a_execucao()
         {
             var id = await AbrirEDiagnosticarAsync("Troca de óleo [falha-pagamento]");
 
-            var historico = await EsperarStatusAsync(id, 10);
+            var historico = await EsperarStatusAsync(id, 5);
 
-            Assert.Equal([1, 2, 7, 3, 8, 9, 10], historico.Select(h => h.StatusNovo));
-            Assert.StartsWith("Pagamento falhou", historico[5].Motivo);
-            Assert.StartsWith("Compensação concluída", historico[6].Motivo);
+            Assert.Equal([1, 2, 7, 3, 4, 5], historico.Select(h => h.StatusNovo));
+            Assert.StartsWith("Orçamento aprovado com o pagamento", historico[4].Motivo);
         }
 
         [Fact]
@@ -284,7 +283,7 @@ namespace OsService.API.Tests
 
             var historico = await EsperarStatusAsync(id, 10);
 
-            Assert.Equal([1, 2, 7, 3, 8, 4, 9, 10], historico.Select(h => h.StatusNovo));
+            Assert.Equal([1, 2, 7, 3, 4, 9, 10], historico.Select(h => h.StatusNovo));
             Assert.Null((await _admin.GetFromJsonAsync<Os>($"/api/ordemservico/{id}", Json))!.DataFimExecucao);
         }
 

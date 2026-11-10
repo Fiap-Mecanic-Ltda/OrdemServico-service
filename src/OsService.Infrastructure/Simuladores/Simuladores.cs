@@ -13,7 +13,7 @@ namespace OsService.Infrastructure.Simuladores
     // O cenário vem de marcadores na descrição do problema da OS:
     //   [falha-diagnostico]  → DiagnosticoFalhou
     //   [recusar]            → OrcamentoRecusado
-    //   [falha-pagamento]    → PagamentoFalhou
+    //   [falha-pagamento]    → PagamentoFalhou na primeira tentativa e PagamentoConfirmado na segunda
     //   [falha-execucao]     → ExecucaoFalhou
     // Sem marcador, o fluxo vai até Finalizada.
 
@@ -85,7 +85,7 @@ namespace OsService.Infrastructure.Simuladores
     }
 
     public class SimuladorBilling :
-        IConsumer<GerarOrcamento>, IConsumer<SolicitarPagamento>, IConsumer<CancelarOrcamento>,
+        IConsumer<GerarOrcamento>, IConsumer<CancelarOrcamento>,
         IConsumer<EstornarPagamento>, IConsumer<OrdemServicoStatusAlterado>
     {
         private readonly MemoriaSimuladores _memoria;
@@ -116,28 +116,32 @@ namespace OsService.Infrastructure.Simuladores
         }
 
         /// <summary>
-        /// O "cliente" responde quando a OS chega em Aguardando Aprovação. Esperar esse evento,
-        /// e não responder junto com o OrcamentoGerado, garante a ordem das mensagens.
+        /// O "cliente" responde quando a OS chega em Aguardando Aprovação: é nesse status que ele
+        /// paga (ou recusa). Esperar esse evento, e não responder junto com o OrcamentoGerado,
+        /// garante a ordem das mensagens.
         /// </summary>
-        public Task Consume(ConsumeContext<OrdemServicoStatusAlterado> context)
+        public async Task Consume(ConsumeContext<OrdemServicoStatusAlterado> context)
         {
             var m = context.Message;
             if (m.StatusAtual != "AguardandoAprovacao" || !_memoria.ItensPorOrdem.TryGetValue(m.OrdemServicoId, out var itens))
-                return Task.CompletedTask;
+                return;
 
-            return Marcadores.Contem(itens, Marcadores.Recusar)
-                ? context.Publish(Marcadores.Resposta(m, new OrcamentoRecusado { OrcamentoId = OrcamentoId(m.OrdemServicoId), Motivo = "Recusa simulada" }))
-                : context.Publish(Marcadores.Resposta(m, new OrcamentoAprovado { OrcamentoId = OrcamentoId(m.OrdemServicoId) }));
-        }
+            if (Marcadores.Contem(itens, Marcadores.Recusar))
+            {
+                await context.Publish(Marcadores.Resposta(m, new OrcamentoRecusado { OrcamentoId = OrcamentoId(m.OrdemServicoId), Motivo = "Recusa simulada" }));
+                return;
+            }
 
-        public Task Consume(ConsumeContext<SolicitarPagamento> context)
-        {
-            var m = context.Message;
-            _memoria.ItensPorOrdem.TryGetValue(m.OrdemServicoId, out var itens);
+            // Cartão recusado na primeira tentativa; o cliente paga de novo e a segunda passa.
+            if (Marcadores.Contem(itens, Marcadores.FalhaPagamento))
+                await context.Publish(Marcadores.Resposta(m, new PagamentoFalhou { Motivo = "Pagamento recusado pela operadora (simulado)" }));
 
-            return itens is not null && Marcadores.Contem(itens, Marcadores.FalhaPagamento)
-                ? context.Publish(Marcadores.Resposta(m, new PagamentoFalhou { Motivo = "Pagamento recusado pela operadora (simulado)" }))
-                : context.Publish(Marcadores.Resposta(m, new PagamentoConfirmado { PagamentoId = PagamentoId(m.OrdemServicoId), Valor = m.ValorTotal, MeioPagamento = "Pix" }));
+            await context.Publish(Marcadores.Resposta(m, new PagamentoConfirmado
+            {
+                PagamentoId   = PagamentoId(m.OrdemServicoId),
+                Valor         = itens.Sum(i => i.Quantidade * i.ValorUnitario),
+                MeioPagamento = "Cartao",
+            }));
         }
 
         public Task Consume(ConsumeContext<CancelarOrcamento> context) =>

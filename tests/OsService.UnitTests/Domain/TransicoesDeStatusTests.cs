@@ -9,8 +9,6 @@ namespace OsService.UnitTests.Domain
         [InlineData(StatusOrdemServico.Recebida, StatusOrdemServico.EmDiagnostico)]
         [InlineData(StatusOrdemServico.EmDiagnostico, StatusOrdemServico.AguardandoOrcamento)]
         [InlineData(StatusOrdemServico.AguardandoOrcamento, StatusOrdemServico.AguardandoAprovacao)]
-        [InlineData(StatusOrdemServico.AguardandoAprovacao, StatusOrdemServico.AguardandoPagamento)]
-        [InlineData(StatusOrdemServico.AguardandoPagamento, StatusOrdemServico.EmExecucao)]
         [InlineData(StatusOrdemServico.EmExecucao, StatusOrdemServico.Finalizada)]
         [InlineData(StatusOrdemServico.Finalizada, StatusOrdemServico.Entregue)]
         [InlineData(StatusOrdemServico.EmExecucao, StatusOrdemServico.Compensando)]
@@ -27,6 +25,8 @@ namespace OsService.UnitTests.Domain
         [InlineData(StatusOrdemServico.Cancelada, StatusOrdemServico.Recebida)]
         [InlineData(StatusOrdemServico.Finalizada, StatusOrdemServico.Cancelada)]
         [InlineData(StatusOrdemServico.EmExecucao, StatusOrdemServico.Cancelada)]
+        [InlineData(StatusOrdemServico.AguardandoOrcamento, StatusOrdemServico.EmExecucao)]
+        [InlineData(StatusOrdemServico.EmDiagnostico, StatusOrdemServico.EmExecucao)]
         public void Saltos_e_saidas_de_status_final_nao_sao_permitidos(StatusOrdemServico de, StatusOrdemServico para)
         {
             Assert.False(TransicoesDeStatus.Permitida(de, para));

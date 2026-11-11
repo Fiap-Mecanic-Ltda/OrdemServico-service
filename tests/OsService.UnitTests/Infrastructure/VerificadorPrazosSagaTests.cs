@@ -61,7 +61,7 @@ namespace OsService.UnitTests.Infrastructure
                 new OrdemServicoSagaState { CorrelationId = diagnosticoVencido, EstadoAtual = "Diagnosticando", PrazoDiagnostico = Agora.AddMinutes(-1) },
                 new OrdemServicoSagaState { CorrelationId = aprovacaoVencida, EstadoAtual = "AguardandoAprovacao", PrazoAprovacao = Agora.AddHours(-1) },
                 new OrdemServicoSagaState { CorrelationId = Guid.NewGuid(), EstadoAtual = "Diagnosticando", PrazoDiagnostico = Agora.AddHours(1) },
-                new OrdemServicoSagaState { CorrelationId = Guid.NewGuid(), EstadoAtual = "AguardandoPagamento", PrazoAprovacao = Agora.AddHours(-1) });
+                new OrdemServicoSagaState { CorrelationId = Guid.NewGuid(), EstadoAtual = "Executando", PrazoAprovacao = Agora.AddHours(-1) });
 
             var quantidade = await Criar().VerificarAsync(CancellationToken.None);
 

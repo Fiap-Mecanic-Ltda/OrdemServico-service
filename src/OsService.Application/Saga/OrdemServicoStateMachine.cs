@@ -23,7 +23,6 @@ namespace OsService.Application.Saga
         public State Diagnosticando { get; private set; } = null!;
         public State AguardandoOrcamento { get; private set; } = null!;
         public State AguardandoAprovacao { get; private set; } = null!;
-        public State AguardandoPagamento { get; private set; } = null!;
         public State Executando { get; private set; } = null!;
         public State Compensando { get; private set; } = null!;
 
@@ -183,22 +182,39 @@ namespace OsService.Application.Saga
                     .TransitionTo(Diagnosticando)
                     .Then(ctx => Passo(ctx, nameof(OrcamentoFalhou))));
 
+            // Regra do negócio: o pagamento é feito com a OS em Aguardando Aprovação. O cliente
+            // aprova pagando (o Web chama o Billing); o PagamentoConfirmado é a aprovação.
             During(AguardandoAprovacao,
-                When(OrcamentoAprovado)
+                When(PagamentoConfirmado)
                     .ThenAsync(async ctx =>
                     {
                         var ordem = await ObterOrdemAsync(ctx);
-                        await MudarStatusAsync(ctx, ordem, StatusOrdemServico.AguardandoPagamento, "Orçamento aprovado pelo cliente");
-
+                        ordem.RegistrarPagamento(ctx.Message.PagamentoId);
+                        ctx.Saga.PagamentoId    = ctx.Message.PagamentoId;
                         ctx.Saga.PrazoAprovacao = null;
-                        await PublicarAsync(ctx, new SolicitarPagamento
+                        await MudarStatusAsync(ctx, ordem, StatusOrdemServico.EmExecucao,
+                                               $"Orçamento aprovado com o pagamento {ctx.Message.PagamentoId}");
+
+                        await PublicarAsync(ctx, new IniciarExecucao
                         {
-                            OrcamentoId = ctx.Saga.OrcamentoId ?? ctx.Message.OrcamentoId,
-                            ValorTotal  = ctx.Saga.ValorOrcamento ?? ordem.ValorTotalItens,
+                            OrcamentoId = ctx.Saga.OrcamentoId ?? 0,
+                            Itens       = ordem.Itens.Select(ParaContrato).ToList(),
                         });
                         await SalvarAsync(ctx);
                     })
-                    .TransitionTo(AguardandoPagamento)
+                    .TransitionTo(Executando)
+                    .Then(ctx => Passo(ctx, nameof(PagamentoConfirmado))),
+
+                // Cartão recusado não cancela nada: a OS continua aguardando e o cliente pode
+                // tentar de novo até o prazo de aprovação.
+                When(PagamentoFalhou)
+                    .Then(ctx => ctx.GetServiceOrCreateInstance<ILogger<OrdemServicoStateMachine>>().LogInformation(
+                        "Saga {CorrelationId}: pagamento recusado ({Motivo}); a OS segue aguardando aprovação.",
+                        ctx.Saga.CorrelationId, ctx.Message.Motivo))
+                    .Then(ctx => Passo(ctx, nameof(PagamentoFalhou))),
+
+                // Aviso de aprovação sem pagamento: só registra. A OS sai daqui com o pagamento.
+                When(OrcamentoAprovado)
                     .Then(ctx => Passo(ctx, nameof(OrcamentoAprovado))),
 
                 When(OrcamentoRecusado)
@@ -218,31 +234,6 @@ namespace OsService.Application.Saga
 
                 When(PrazoAprovacaoExpirado)
                     .ThenAsync(ctx => IniciarCompensacaoAsync(ctx, "Prazo de aprovação do orçamento expirado",
-                                                              cancelarOrcamento: true, estornarPagamento: false, liberarEstoque: true))
-                    .TransitionTo(Compensando)
-                    .If(ctx => CompensacaoConcluida(ctx.Saga), x => x.Finalize()));
-
-            During(AguardandoPagamento,
-                When(PagamentoConfirmado)
-                    .ThenAsync(async ctx =>
-                    {
-                        var ordem = await ObterOrdemAsync(ctx);
-                        ordem.RegistrarPagamento(ctx.Message.PagamentoId);
-                        ctx.Saga.PagamentoId = ctx.Message.PagamentoId;
-                        await MudarStatusAsync(ctx, ordem, StatusOrdemServico.EmExecucao, $"Pagamento {ctx.Message.PagamentoId} confirmado");
-
-                        await PublicarAsync(ctx, new IniciarExecucao
-                        {
-                            OrcamentoId = ctx.Saga.OrcamentoId ?? 0,
-                            Itens       = ordem.Itens.Select(ParaContrato).ToList(),
-                        });
-                        await SalvarAsync(ctx);
-                    })
-                    .TransitionTo(Executando)
-                    .Then(ctx => Passo(ctx, nameof(PagamentoConfirmado))),
-
-                When(PagamentoFalhou)
-                    .ThenAsync(ctx => IniciarCompensacaoAsync(ctx, $"Pagamento falhou: {ctx.Message.Motivo}",
                                                               cancelarOrcamento: true, estornarPagamento: false, liberarEstoque: true))
                     .TransitionTo(Compensando)
                     .If(ctx => CompensacaoConcluida(ctx.Saga), x => x.Finalize()));
@@ -283,7 +274,12 @@ namespace OsService.Application.Saga
                 When(PagamentoEstornado)
                     .Then(ctx => ctx.Saga.AguardandoPagamentoEstornado = false)
                     .ThenAsync(ConcluirCompensacaoSeProntaAsync)
-                    .If(ctx => CompensacaoConcluida(ctx.Saga), x => x.Finalize()));
+                    .If(ctx => CompensacaoConcluida(ctx.Saga), x => x.Finalize()),
+
+                // Pagamento confirmado depois que a OS saiu de Aguardando Aprovação (ex.: o prazo
+                // venceu enquanto o cliente pagava): fora da regra, então é estornado.
+                When(PagamentoConfirmado, ctx => ctx.Saga.PagamentoId != ctx.Message.PagamentoId)
+                    .ThenAsync(EstornarPagamentoForaDoPrazoAsync));
 
             // Terminada a Saga, a linha do estado é apagada; o caminho completo fica no histórico da OS.
             SetCompletedWhenFinalized();
@@ -356,6 +352,17 @@ namespace OsService.Application.Saga
             if (CompensacaoConcluida(saga))
                 await MudarStatusAsync(ctx, ordem, StatusOrdemServico.Cancelada, motivo);
 
+            await SalvarAsync(ctx);
+        }
+
+        private static async Task EstornarPagamentoForaDoPrazoAsync(BehaviorContext<OrdemServicoSagaState, PagamentoConfirmado> ctx)
+        {
+            var motivo = $"Pagamento {ctx.Message.PagamentoId} recebido fora de Aguardando Aprovação";
+            ctx.Saga.PagamentoId                  = ctx.Message.PagamentoId;
+            ctx.Saga.AguardandoPagamentoEstornado = true;
+
+            await PublicarAsync(ctx, new EstornarPagamento { PagamentoId = ctx.Message.PagamentoId, Motivo = motivo });
+            Compensacao(ctx, motivo, nameof(EstornarPagamento));
             await SalvarAsync(ctx);
         }
 

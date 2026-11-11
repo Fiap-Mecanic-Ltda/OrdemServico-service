@@ -185,24 +185,93 @@ namespace OsService.UnitTests.Saga
         }
 
         [Fact]
-        public async Task Orcamento_aprovado_pede_o_pagamento_do_valor_do_orcamento()
+        public async Task Pagamento_confirmado_em_aguardando_aprovacao_aprova_e_inicia_a_execucao()
         {
             var ordem = await AteAprovacaoAsync();
 
-            await EnviarAsync(ordem, new OrcamentoAprovado { OrcamentoId = 77 });
-            await EsperarEstadoAsync(ordem, m => m.AguardandoPagamento);
+            await EnviarAsync(ordem, new PagamentoConfirmado { PagamentoId = 88, Valor = 160m });
+            await EsperarEstadoAsync(ordem, m => m.Executando);
 
-            Assert.True(await _harness.Published.Any<SolicitarPagamento>(p =>
-                p.Context.Message.OrcamentoId == 77 && p.Context.Message.ValorTotal == 160m));
-            Assert.Equal(StatusOrdemServico.AguardandoPagamento, (await LerAsync(ordem)).Status);
+            var lida = await LerAsync(ordem);
+            Assert.Equal(StatusOrdemServico.EmExecucao, lida.Status);
+            Assert.Equal(88, lida.PagamentoId);
+            var ultimo = lida.Historico.OrderBy(h => h.Id).Last();
+            Assert.Equal(StatusOrdemServico.AguardandoAprovacao, ultimo.StatusAnterior);
+            Assert.Equal("Orçamento aprovado com o pagamento 88", ultimo.Motivo);
+            Assert.True(await _harness.Published.Any<IniciarExecucao>(p =>
+                p.Context.Message.OrcamentoId == 77 && p.Context.Message.Itens.Count == 1));
+            Assert.Null(_saga.Sagas.Contains(ordem.CorrelationId)!.PrazoAprovacao);
+        }
+
+        [Fact]
+        public async Task Pagamento_recusado_mantem_a_OS_aguardando_aprovacao_para_nova_tentativa()
+        {
+            var ordem = await AteAprovacaoAsync();
+
+            await ProcessarAsync(ordem, new PagamentoFalhou { Motivo = "Cartão recusado" });
+            await EsperarEstadoAsync(ordem, m => m.AguardandoAprovacao);
+            Assert.Equal(StatusOrdemServico.AguardandoAprovacao, (await LerAsync(ordem)).Status);
+            Assert.False(_harness.Published.Select<CancelarOrcamento>().Any());
+            Assert.False(_harness.Published.Select<LiberarReservaEstoque>().Any());
+
+            await EnviarAsync(ordem, new PagamentoConfirmado { PagamentoId = 89, Valor = 160m });
+            await EsperarEstadoAsync(ordem, m => m.Executando);
+            Assert.Equal(89, (await LerAsync(ordem)).PagamentoId);
+        }
+
+        [Fact]
+        public async Task Orcamento_aprovado_sem_pagamento_nao_muda_o_status()
+        {
+            var ordem = await AteAprovacaoAsync();
+
+            await ProcessarAsync(ordem, new OrcamentoAprovado { OrcamentoId = 77 });
+
+            await EsperarEstadoAsync(ordem, m => m.AguardandoAprovacao);
+            Assert.Equal(StatusOrdemServico.AguardandoAprovacao, (await LerAsync(ordem)).Status);
+            Assert.False(_harness.Published.Select<IniciarExecucao>().Any());
+        }
+
+        [Fact]
+        public async Task Pagamento_antes_de_aguardando_aprovacao_e_ignorado()
+        {
+            var ordem = await IniciarAsync();
+            await EnviarAsync(ordem, Diagnostico());
+            await EsperarEstadoAsync(ordem, m => m.AguardandoOrcamento);
+
+            await ProcessarAsync(ordem, new PagamentoConfirmado { PagamentoId = 88, Valor = 160m });
+
+            await EsperarEstadoAsync(ordem, m => m.AguardandoOrcamento);
+            var lida = await LerAsync(ordem);
+            Assert.Equal(StatusOrdemServico.AguardandoOrcamento, lida.Status);
+            Assert.Null(lida.PagamentoId);
+            Assert.False(_harness.Published.Select<IniciarExecucao>().Any());
+        }
+
+        [Fact]
+        public async Task Pagamento_que_chega_depois_do_prazo_de_aprovacao_e_estornado()
+        {
+            var ordem = await AteAprovacaoAsync();
+            await _harness.Bus.Publish(new PrazoAprovacaoExpirado { CorrelationId = ordem.CorrelationId });
+            await EsperarEstadoAsync(ordem, m => m.Compensando);
+
+            await ProcessarAsync(ordem, new PagamentoConfirmado { PagamentoId = 90, Valor = 160m });
+            Assert.True(await _harness.Published.Any<EstornarPagamento>(p => p.Context.Message.PagamentoId == 90));
+            Assert.False(_harness.Published.Select<IniciarExecucao>().Any());
+
+            // Cancelamento confirmado, mas a Saga ainda espera o estorno.
+            await EnviarAsync(ordem, new OrcamentoCancelado { OrcamentoId = 77 });
+            await EsperarAsync(() => _saga.Sagas.Contains(ordem.CorrelationId)?.AguardandoOrcamentoCancelado == false);
+            Assert.Equal(StatusOrdemServico.Compensando, (await LerAsync(ordem)).Status);
+
+            await EnviarAsync(ordem, new PagamentoEstornado { PagamentoId = 90 });
+            await EsperarSemSagaAsync(ordem);
+            Assert.Equal(StatusOrdemServico.Cancelada, (await LerAsync(ordem)).Status);
         }
 
         [Fact]
         public async Task Execucao_finalizada_usa_as_datas_da_execucao_e_termina_a_saga()
         {
             var ordem = await AteAprovacaoAsync();
-            await EnviarAsync(ordem, new OrcamentoAprovado { OrcamentoId = 77 });
-            await EsperarEstadoAsync(ordem, m => m.AguardandoPagamento);
             await EnviarAsync(ordem, new PagamentoConfirmado { PagamentoId = 88, Valor = 160m });
             await EsperarEstadoAsync(ordem, m => m.Executando);
             Assert.True(await _harness.Published.Any<IniciarExecucao>(p => p.Context.Message.OrcamentoId == 77));
@@ -309,8 +378,6 @@ namespace OsService.UnitTests.Saga
         public async Task Falha_na_execucao_so_termina_com_estorno_e_cancelamento_confirmados()
         {
             var ordem = await AteAprovacaoAsync();
-            await EnviarAsync(ordem, new OrcamentoAprovado { OrcamentoId = 77 });
-            await EsperarEstadoAsync(ordem, m => m.AguardandoPagamento);
             await EnviarAsync(ordem, new PagamentoConfirmado { PagamentoId = 88, Valor = 160m });
             await EsperarEstadoAsync(ordem, m => m.Executando);
 
@@ -361,6 +428,14 @@ namespace OsService.UnitTests.Saga
             Assert.True(await _harness.Published.Any<Fault<DiagnosticoConcluido>>());
             await EsperarEstadoAsync(ordem, m => m.Diagnosticando);
             Assert.Empty((await LerAsync(ordem)).Itens);
+        }
+
+        private static async Task EsperarAsync(Func<bool> condicao)
+        {
+            var limite = DateTime.UtcNow.AddSeconds(5);
+            while (!condicao() && DateTime.UtcNow < limite)
+                await Task.Delay(50);
+            Assert.True(condicao());
         }
 
         private async Task EsperarSemSagaAsync(OrdemServico ordem) =>

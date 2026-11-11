@@ -24,7 +24,8 @@ A Saga é **orquestrada** e o orquestrador é o **OS Service**:
 | `DiagnosticoFalhou` | nenhuma | `Recebida` |
 | `OrcamentoFalhou` | nenhuma (reenvia `IniciarDiagnostico`) | `EmDiagnostico` |
 | `OrcamentoRecusado` | `LiberarReservaEstoque` | `Cancelada` |
-| `PagamentoFalhou` | `CancelarOrcamento` + `LiberarReservaEstoque` | `Cancelada` |
+| `PagamentoFalhou` | nenhuma: o cliente pode pagar de novo até o prazo de aprovação | `AguardandoAprovacao` |
+| `PagamentoConfirmado` fora de `AguardandoAprovacao` (prazo vencido) | `EstornarPagamento` | `Cancelada` |
 | `ExecucaoFalhou` | `EstornarPagamento` + `CancelarOrcamento` | `Cancelada` |
 | Prazo de aprovação expirado | `CancelarOrcamento` + `LiberarReservaEstoque` | `Cancelada` |
 | Prazo de diagnóstico expirado | `LiberarReservaEstoque` | `Recebida` |

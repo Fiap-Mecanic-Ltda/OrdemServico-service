@@ -1,5 +1,6 @@
 using OsService.Domain.Enums;
 using System.ComponentModel.DataAnnotations;
+using System.Text.Json.Serialization;
 
 namespace OsService.API.ViewModels
 {
@@ -47,6 +48,7 @@ namespace OsService.API.ViewModels
         [MaxLength(1000, ErrorMessage = "A descrição do item deve ter no máximo 1000 caracteres.")]
         public string Descricao { get; set; } = string.Empty;
 
+        [JsonRequired]
         [EnumDataType(typeof(TipoItemOrdemServico), ErrorMessage = "Tipo inválido. Use Peca, Insumo ou Servico.")]
         public TipoItemOrdemServico Tipo { get; set; }
 

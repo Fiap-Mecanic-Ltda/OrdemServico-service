@@ -56,6 +56,7 @@ Rodando sem Docker:
 
 ```bash
 dotnet user-secrets set JWT_SECRET_KEY "<chave>" --project src/OsService.API
+dotnet user-secrets set "ConnectionStrings:DefaultConnection" "Server=localhost,1434;Database=OsServiceDb;User Id=sa;Password=<senha>;TrustServerCertificate=True;" --project src/OsService.API
 dotnet run --project src/OsService.API          # http://localhost:5070/swagger
 ```
 
@@ -103,7 +104,7 @@ antes do primeiro `terraform apply` da infra, o push na `main` pula a publicaç�
 | Chave | Padrão | Uso |
 |---|---|---|
 | `JWT_SECRET_KEY` | (obrigatória) | Mesma chave do MechanicLtda e da Lambda |
-| `ConnectionStrings__DefaultConnection` | SQL Server local | Banco próprio do serviço (schema `os`) |
+| `ConnectionStrings__DefaultConnection` | (obrigatória) | Banco próprio do serviço (schema `os`) |
 | `Integracoes__MechanicLtdaApi__BaseUrl` | `http://localhost:8080` | API do MechanicLtda, usada para validar cliente e veículo |
 | `Saga__Habilitada` | `false` | Liga a Saga (RabbitMQ). Com `true`, as transições feitas pela Saga ficam bloqueadas na API (409) |
 | `Saga__PrazoDiagnosticoHoras` / `Saga__PrazoAprovacaoHoras` | `48` / `72` | Prazos da Saga (ver contratos) |

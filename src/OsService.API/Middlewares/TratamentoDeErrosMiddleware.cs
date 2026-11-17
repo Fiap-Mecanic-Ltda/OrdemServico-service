@@ -43,7 +43,7 @@ namespace OsService.API.Middlewares
                     _logger.LogInformation("Requisição recusada ({Status}): {Mensagem}", status, ex.Message);
 
                 context.Response.StatusCode = status;
-                await context.Response.WriteAsJsonAsync(new { success = false, errors = new[] { mensagem } });
+                await context.Response.WriteAsJsonAsync(new { success = false, errors = new[] { mensagem } }, context.RequestAborted);
             }
         }
     }

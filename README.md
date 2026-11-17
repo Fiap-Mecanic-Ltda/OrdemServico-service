@@ -77,7 +77,7 @@ python3 scripts/verificar-cobertura.py coverage/relatorio/Cobertura.xml 80
 
 A esteira falha se a cobertura de linhas ficar abaixo de 80% e publica o relatório no resumo
 do job. Com o secret `SONAR_TOKEN` configurado no repositório, ela também analisa o código no
-SonarCloud e falha se o quality gate reprovar. As variáveis `SONAR_ORGANIZATION` e
+SonarCloud. No PR, a esteira espera o quality gate e falha se ele reprovar. No push na `main`, quem confere o gate é o `scripts/quality-gate-sonar.py`: ele falha com `ERROR` e só avisa quando o gate volta `NONE` ou não está acessível. No plano gratuito, o SonarCloud nem sempre calcula o gate na `main`, e isso travava a publicação da imagem. As variáveis `SONAR_ORGANIZATION` e
 `SONAR_PROJECT_KEY` são opcionais e têm padrão `fiap-mecanic-ltda` e
 `Fiap-Mecanic-Ltda_OrdemServico-service`.
 

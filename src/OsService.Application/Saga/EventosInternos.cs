@@ -13,6 +13,11 @@ namespace OsService.Application.Saga
         public string DescricaoProblema { get; init; } = string.Empty;
         public string NomeCliente { get; init; } = string.Empty;
         public string EmailCliente { get; init; } = string.Empty;
+        public string? TelefoneCliente { get; init; }
+        public string? VeiculoPlaca { get; init; }
+        public string? VeiculoMarca { get; init; }
+        public string? VeiculoModelo { get; init; }
+        public int? VeiculoAno { get; init; }
         public string? CorrelationIdRequisicao { get; init; }
     }
 

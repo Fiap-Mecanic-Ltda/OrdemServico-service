@@ -41,11 +41,11 @@ namespace OsService.UnitTests.Infrastructure
         {
             _contexto.Setup(c => c.Authorization).Returns("Bearer abc");
             _contexto.Setup(c => c.CorrelationId).Returns("req-9");
-            var (gateway, handler) = Criar(_ => Json("""{"id":2,"clienteId":1,"placa":"ABC1D23","modelo":"Gol"}"""));
+            var (gateway, handler) = Criar(_ => Json("""{"id":2,"clienteId":1,"placa":"ABC1D23","marca":"VW","modelo":"Gol","ano":2019}"""));
 
             var veiculo = await gateway.ObterVeiculoAsync(2);
 
-            Assert.Equal(new VeiculoResumo(2, 1, "ABC1D23"), veiculo);
+            Assert.Equal(new VeiculoResumo(2, 1, "ABC1D23", "VW", "Gol", 2019), veiculo);
             Assert.Equal("http://mechanicltda/api/veiculo/2", handler.Ultima!.RequestUri!.ToString());
             Assert.Equal("Bearer abc", handler.Ultima.Headers.Authorization!.ToString());
             Assert.Equal("req-9", Assert.Single(handler.Ultima.Headers.GetValues("X-Correlation-Id")));
@@ -54,11 +54,11 @@ namespace OsService.UnitTests.Infrastructure
         [Fact]
         public async Task Le_o_cliente()
         {
-            var (gateway, handler) = Criar(_ => Json("""{"id":1,"nome":"Ana","email":"ana@x.com"}"""));
+            var (gateway, handler) = Criar(_ => Json("""{"id":1,"nome":"Ana","email":"ana@x.com","telefone":"11999990000"}"""));
 
             var cliente = await gateway.ObterClienteAsync(1);
 
-            Assert.Equal(new ClienteResumo(1, "Ana", "ana@x.com"), cliente);
+            Assert.Equal(new ClienteResumo(1, "Ana", "ana@x.com", "11999990000"), cliente);
             Assert.False(handler.Ultima!.Headers.Contains("Authorization"));
         }
 

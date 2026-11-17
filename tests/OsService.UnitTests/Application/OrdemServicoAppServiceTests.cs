@@ -291,19 +291,38 @@ namespace OsService.UnitTests.Application
             var ordem = NovaOrdem();
             RepositorioDevolve(ordem);
             _gateway.Setup(g => g.ObterClienteAsync(1, It.IsAny<CancellationToken>()))
-                    .ReturnsAsync(new ClienteResumo(1, "Ana", "ana@x.com"));
+                    .ReturnsAsync(new ClienteResumo(1, "Ana", "ana@x.com", "11999990000"));
+            _gateway.Setup(g => g.ObterVeiculoAsync(ordem.VeiculoId, It.IsAny<CancellationToken>()))
+                    .ReturnsAsync(new VeiculoResumo(ordem.VeiculoId, 1, "ABC1D23", "VW", "Gol", 2019));
 
             var dto = await Criar(sagaHabilitada: true).IniciarDiagnosticoAsync(10);
 
             Assert.Equal(StatusOrdemServico.EmDiagnostico, dto.Status);
             _publicador.Verify(p => p.PublicarAsync(
                 It.Is<DiagnosticoSolicitado>(m => m.CorrelationId == ordem.CorrelationId && m.NomeCliente == "Ana"
-                                                  && m.EmailCliente == "ana@x.com" && m.CorrelationIdRequisicao == "req-1"),
+                                                  && m.EmailCliente == "ana@x.com" && m.CorrelationIdRequisicao == "req-1"
+                                                  && m.TelefoneCliente == "11999990000" && m.VeiculoPlaca == "ABC1D23"
+                                                  && m.VeiculoMarca == "VW" && m.VeiculoModelo == "Gol" && m.VeiculoAno == 2019),
                 "req-1", It.IsAny<CancellationToken>()), Times.Once);
             _publicador.Verify(p => p.PublicarAsync(
                 It.Is<OrdemServicoStatusAlterado>(m => m.StatusAnterior == "Recebida" && m.StatusAtual == "EmDiagnostico"),
                 "req-1", It.IsAny<CancellationToken>()), Times.Once);
             _publicador.Verify(p => p.ConfirmarAsync(It.IsAny<CancellationToken>()), Times.Once);
+        }
+
+        [Fact]
+        public async Task Com_a_saga_ligada_o_diagnostico_segue_sem_o_veiculo_se_ele_sumiu_do_cadastro()
+        {
+            RepositorioDevolve(NovaOrdem());
+            _gateway.Setup(g => g.ObterClienteAsync(1, It.IsAny<CancellationToken>()))
+                    .ReturnsAsync(new ClienteResumo(1, "Ana", "ana@x.com"));
+
+            var dto = await Criar(sagaHabilitada: true).IniciarDiagnosticoAsync(10);
+
+            Assert.Equal(StatusOrdemServico.EmDiagnostico, dto.Status);
+            _publicador.Verify(p => p.PublicarAsync(
+                It.Is<DiagnosticoSolicitado>(m => m.TelefoneCliente == null && m.VeiculoPlaca == null && m.VeiculoMarca == null),
+                "req-1", It.IsAny<CancellationToken>()), Times.Once);
         }
 
         [Fact]

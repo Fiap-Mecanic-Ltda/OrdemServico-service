@@ -329,6 +329,9 @@ namespace OsService.Application.AppServices
             var cliente = await _clienteVeiculo.ObterClienteAsync(ordem.ClienteId, ct)
                 ?? throw new RecursoNaoEncontradoException($"Cliente com Id '{ordem.ClienteId}' não encontrado.");
 
+            // Só para exibição no orçamento: se o veículo sumiu do cadastro, a Saga segue sem ele.
+            var veiculo = await _clienteVeiculo.ObterVeiculoAsync(ordem.VeiculoId, ct);
+
             await MudarStatusAsync(ordem, StatusOrdemServico.EmDiagnostico, motivo, ct);
 
             await _publicador.PublicarAsync(new DiagnosticoSolicitado
@@ -340,6 +343,11 @@ namespace OsService.Application.AppServices
                 DescricaoProblema       = ordem.DescricaoProblema,
                 NomeCliente             = cliente.Nome,
                 EmailCliente            = cliente.Email,
+                TelefoneCliente         = cliente.Telefone,
+                VeiculoPlaca            = veiculo?.Placa,
+                VeiculoMarca            = veiculo?.Marca,
+                VeiculoModelo           = veiculo?.Modelo,
+                VeiculoAno              = veiculo?.Ano,
                 CorrelationIdRequisicao = _contexto.CorrelationId,
             }, _contexto.CorrelationId, ct);
         }

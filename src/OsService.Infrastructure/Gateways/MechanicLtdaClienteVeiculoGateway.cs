@@ -34,14 +34,14 @@ namespace OsService.Infrastructure.Gateways
         {
             var cliente = await GetAsync<ClienteResposta>($"api/cliente/{clienteId}", "ObterCliente", ct);
 
-            return cliente is null ? null : new ClienteResumo(cliente.Id, cliente.Nome ?? string.Empty, cliente.Email ?? string.Empty);
+            return cliente is null ? null : new ClienteResumo(cliente.Id, cliente.Nome ?? string.Empty, cliente.Email ?? string.Empty, cliente.Telefone);
         }
 
         public async Task<VeiculoResumo?> ObterVeiculoAsync(int veiculoId, CancellationToken ct = default)
         {
             var veiculo = await GetAsync<VeiculoResposta>($"api/veiculo/{veiculoId}", "ObterVeiculo", ct);
 
-            return veiculo is null ? null : new VeiculoResumo(veiculo.Id, veiculo.ClienteId, veiculo.Placa);
+            return veiculo is null ? null : new VeiculoResumo(veiculo.Id, veiculo.ClienteId, veiculo.Placa, veiculo.Marca, veiculo.Modelo, veiculo.Ano);
         }
 
         private async Task<T?> GetAsync<T>(string caminho, string operacao, CancellationToken ct) where T : class
@@ -86,8 +86,8 @@ namespace OsService.Infrastructure.Gateways
             return excecao;
         }
 
-        private sealed record ClienteResposta(int Id, string? Nome, string? Email);
+        private sealed record ClienteResposta(int Id, string? Nome, string? Email, string? Telefone);
 
-        private sealed record VeiculoResposta(int Id, int ClienteId, string? Placa);
+        private sealed record VeiculoResposta(int Id, int ClienteId, string? Placa, string? Marca, string? Modelo, int? Ano);
     }
 }

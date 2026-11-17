@@ -86,6 +86,11 @@ namespace OsService.UnitTests.Saga
                 DescricaoProblema       = ordem.DescricaoProblema,
                 NomeCliente             = "Ana",
                 EmailCliente            = "ana@x.com",
+                TelefoneCliente         = "11999990000",
+                VeiculoPlaca            = "ABC1D23",
+                VeiculoMarca            = "VW",
+                VeiculoModelo           = "Gol",
+                VeiculoAno              = 2019,
                 CorrelationIdRequisicao = "req-1",
             });
             await EsperarEstadoAsync(ordem, m => m.Diagnosticando);
@@ -160,7 +165,12 @@ namespace OsService.UnitTests.Saga
 
             Assert.True(await _harness.Published.Any<GerarOrcamento>(p =>
                 p.Context.Message.NomeCliente == "Ana" && p.Context.Message.EmailCliente == "ana@x.com"
-                && p.Context.Message.Itens.Single().Tipo == "Peca"));
+                && p.Context.Message.Itens.Single().Tipo == "Peca"
+                && p.Context.Message.TelefoneCliente == "11999990000"
+                && p.Context.Message.DescricaoProblema == "Barulho no freio"
+                && p.Context.Message.Veiculo!.VeiculoId == 2 && p.Context.Message.Veiculo.Placa == "ABC1D23"
+                && p.Context.Message.Veiculo.Marca == "VW" && p.Context.Message.Veiculo.Modelo == "Gol"
+                && p.Context.Message.Veiculo.Ano == 2019));
             Assert.True(await _harness.Published.Any<OrdemServicoStatusAlterado>(p =>
                 p.Context.Message.StatusAnterior == "EmDiagnostico" && p.Context.Message.StatusAtual == "AguardandoOrcamento"));
             _monitoramento.Verify(m => m.RegistrarPassoSaga(ordem.CorrelationId, ordem.Id, nameof(DiagnosticoConcluido), "AguardandoOrcamento"));

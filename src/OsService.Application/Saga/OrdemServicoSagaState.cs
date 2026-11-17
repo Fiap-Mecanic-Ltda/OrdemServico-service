@@ -21,6 +21,13 @@ namespace OsService.Application.Saga
         /// <summary>Vão no GerarOrcamento: o Billing envia o e-mail sem consultar o cadastro de clientes.</summary>
         public string NomeCliente { get; set; } = string.Empty;
         public string EmailCliente { get; set; } = string.Empty;
+        public string? TelefoneCliente { get; set; }
+
+        /// <summary>Também vão no GerarOrcamento, para o PDF do orçamento. Nulos se o veículo não foi encontrado.</summary>
+        public string? VeiculoPlaca { get; set; }
+        public string? VeiculoMarca { get; set; }
+        public string? VeiculoModelo { get; set; }
+        public int? VeiculoAno { get; set; }
 
         public int? OrcamentoId { get; set; }
         public decimal? ValorOrcamento { get; set; }

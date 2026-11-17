@@ -91,6 +91,11 @@ namespace OsService.Application.Saga
                         ctx.Saga.VeiculoId               = m.VeiculoId;
                         ctx.Saga.NomeCliente             = m.NomeCliente;
                         ctx.Saga.EmailCliente            = m.EmailCliente;
+                        ctx.Saga.TelefoneCliente         = m.TelefoneCliente;
+                        ctx.Saga.VeiculoPlaca            = m.VeiculoPlaca;
+                        ctx.Saga.VeiculoMarca            = m.VeiculoMarca;
+                        ctx.Saga.VeiculoModelo           = m.VeiculoModelo;
+                        ctx.Saga.VeiculoAno              = m.VeiculoAno;
                         ctx.Saga.CorrelationIdRequisicao = m.CorrelationIdRequisicao;
                         ctx.Saga.DataInicio              = Agora(ctx);
                     })
@@ -109,10 +114,13 @@ namespace OsService.Application.Saga
                         ctx.Saga.PrazoDiagnostico = null;
                         await PublicarAsync(ctx, new GerarOrcamento
                         {
-                            ClienteId    = ctx.Saga.ClienteId,
-                            NomeCliente  = ctx.Saga.NomeCliente,
-                            EmailCliente = ctx.Saga.EmailCliente,
-                            Itens        = ordem.Itens.Select(ParaContrato).ToList(),
+                            ClienteId         = ctx.Saga.ClienteId,
+                            NomeCliente       = ctx.Saga.NomeCliente,
+                            EmailCliente      = ctx.Saga.EmailCliente,
+                            TelefoneCliente   = ctx.Saga.TelefoneCliente,
+                            DescricaoProblema = ordem.DescricaoProblema,
+                            Veiculo           = VeiculoParaContrato(ctx.Saga),
+                            Itens             = ordem.Itens.Select(ParaContrato).ToList(),
                         });
                         await SalvarAsync(ctx);
                     })
@@ -461,5 +469,18 @@ namespace OsService.Application.Saga
             EstoqueId        = item.EstoqueId,
             ServicoOficinaId = item.ServicoOficinaId,
         };
+
+        /// <summary>Nulo quando o veículo não foi encontrado no MechanicLtda na abertura da Saga.</summary>
+        private static VeiculoOrdemServico? VeiculoParaContrato(OrdemServicoSagaState saga) =>
+            saga.VeiculoPlaca is null && saga.VeiculoMarca is null && saga.VeiculoModelo is null && saga.VeiculoAno is null
+                ? null
+                : new VeiculoOrdemServico
+                {
+                    VeiculoId = saga.VeiculoId,
+                    Placa     = saga.VeiculoPlaca,
+                    Marca     = saga.VeiculoMarca,
+                    Modelo    = saga.VeiculoModelo,
+                    Ano       = saga.VeiculoAno,
+                };
     }
 }

@@ -14,6 +14,10 @@ namespace OsService.Infrastructure.Configuracoes
             entity.Property(s => s.EstadoAtual).HasMaxLength(64).IsRequired();
             entity.Property(s => s.NomeCliente).HasMaxLength(200);
             entity.Property(s => s.EmailCliente).HasMaxLength(200);
+            entity.Property(s => s.TelefoneCliente).HasMaxLength(20);
+            entity.Property(s => s.VeiculoPlaca).HasMaxLength(10);
+            entity.Property(s => s.VeiculoMarca).HasMaxLength(50);
+            entity.Property(s => s.VeiculoModelo).HasMaxLength(50);
             entity.Property(s => s.ValorOrcamento).HasPrecision(18, 2);
             entity.Property(s => s.MotivoCompensacao).HasMaxLength(500);
             entity.Property(s => s.CorrelationIdRequisicao).HasMaxLength(128);

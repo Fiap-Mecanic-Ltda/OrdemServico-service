@@ -251,12 +251,31 @@ namespace OsService.Infrastructure.Migrations
                     b.Property<DateTime?>("PrazoDiagnostico")
                         .HasColumnType("datetime2");
 
+                    b.Property<string>("TelefoneCliente")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
                     b.Property<decimal?>("ValorOrcamento")
                         .HasPrecision(18, 2)
                         .HasColumnType("decimal(18,2)");
 
+                    b.Property<int?>("VeiculoAno")
+                        .HasColumnType("int");
+
                     b.Property<int>("VeiculoId")
                         .HasColumnType("int");
+
+                    b.Property<string>("VeiculoMarca")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("VeiculoModelo")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("VeiculoPlaca")
+                        .HasMaxLength(10)
+                        .HasColumnType("nvarchar(10)");
 
                     b.HasKey("CorrelationId");
 

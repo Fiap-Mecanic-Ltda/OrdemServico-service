@@ -74,7 +74,7 @@ app.MapGet("/health", () => Results.Ok(new { status = "ok", servico = "os-servic
    .AllowAnonymous()
    .ExcludeFromDescription();
 
-app.Run();
+await app.RunAsync();
 
 // Expõe a classe Program para o WebApplicationFactory dos testes de API.
 public partial class Program { }
